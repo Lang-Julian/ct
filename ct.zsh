@@ -1,25 +1,33 @@
 #!/usr/bin/env zsh
 # ct — Terminal Task Tagger
-# Visual task identification for fast terminal switching.
-# Supports iTerm2 (background image + badge + tab color) and any terminal (title + ASCII art).
+# https://github.com/Lang-Julian/ct
 #
-# Usage:  ct <name>     Tag terminal (any name — icon auto-generated on first use)
-#         ct clear      Reset everything
-#         ct list       Show all tasks with icons
-#         ct log        Show task history with durations
-#         ct            Show current task + timer
+# Visual task identification for fast terminal switching.
+# iTerm2/WezTerm: background image + badge + tab color
+# Any terminal: title + ASCII art
+#
+# Usage:  ct <name>     Tag terminal (icon auto-generated on first use)
+#         ct            Show current task + context
+#         ct help       Full help
+#         ct list       Show all tasks
+#         ct log        Show task history
+#         ct clear      Reset terminal
+
+CT_VERSION="1.0.0"
 
 _CT_DIR="${CT_DIR:-$HOME/.ct}"
 _CT_ICON_DIR="${_CT_DIR}/icons"
-_CT_CURRENT=""
-_CT_ACTIVE=0           # accumulated active seconds
-_CT_LAST_PROMPT=0      # timestamp of last prompt
-_CT_IDLE=${CT_IDLE:-600}  # seconds before a gap counts as idle (default: 10 min)
 
-zmodload zsh/datetime 2>/dev/null  # for EPOCHSECONDS
+# State — preserved across re-source
+[[ -z "$_CT_CURRENT" ]]    && _CT_CURRENT=""
+[[ -z "$_CT_ACTIVE" ]]     && _CT_ACTIVE=0
+[[ -z "$_CT_LAST_PROMPT" ]]&& _CT_LAST_PROMPT=0
+_CT_IDLE=${CT_IDLE:-600}   # idle threshold in seconds (default: 10 min)
+
+zmodload zsh/datetime 2>/dev/null
 
 # ─── Pre-built tasks ────────────────────────────────────────────
-# Format:  key  "label;r;g;b;icon_file"
+# Format: key  "label;r;g;b;icon_file"
 
 typeset -gA _CT_TASKS
 _CT_TASKS=(
@@ -39,81 +47,74 @@ _CT_TASKS=(
 
 [[ -f "${_CT_DIR}/config.zsh" ]] && source "${_CT_DIR}/config.zsh"
 
+# ─── Reserved subcommands (not valid task names) ────────────────
+
+_CT_RESERVED=(help -h --help version clear reset list ls log)
+
 # ─── Parse task definition ──────────────────────────────────────
 
 _ct_parse() {
     local def="${_CT_TASKS[$1]}"
-    if [[ -n "$def" ]]; then
-        _p_label="${def%%;*}"; local rest="${def#*;}"
-        _p_r="${rest%%;*}"; rest="${rest#*;}"
-        _p_g="${rest%%;*}"; rest="${rest#*;}"
-        _p_b="${rest%%;*}"; _p_icon="${rest#*;}"
-        return 0
-    fi
-    return 1
+    [[ -z "$def" ]] && return 1
+    local rest
+    _p_label="${def%%;*}"; rest="${def#*;}"
+    _p_r="${rest%%;*}"; rest="${rest#*;}"
+    _p_g="${rest%%;*}"; rest="${rest#*;}"
+    _p_b="${rest%%;*}"; _p_icon="${rest#*;}"
+    return 0
 }
 
-# ─── Hash-based color for custom tasks ──────────────────────────
-
-_ct_hash_rgb() {
-    python3 -c "
-import hashlib, colorsys
-h=int(hashlib.sha256('$1'.encode()).hexdigest()[:8],16)
-r,g,b=colorsys.hls_to_rgb((h%360)/360,.5,.7)
-print(f'{int(r*255)};{int(g*255)};{int(b*255)}')
-" 2>/dev/null || echo "120;120;180"
-}
-
-# ─── Slug: safe filename from any input ─────────────────────────
+# ─── Slug: safe filename from any input (pure zsh, no subshells) ─
 
 _ct_slug() {
-    echo "${1//[^a-zA-Z0-9_-]/-}" | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g;s/^-//;s/-$//'
+    local s="${1//[^a-zA-Z0-9_-]/-}"
+    s="${(L)s}"              # lowercase
+    s="${s//--##/-}"         # collapse multiple dashes
+    s="${s#-}"; s="${s%-}"   # strip leading/trailing dash
+    [[ -z "$s" ]] && s="unnamed"
+    echo "$s"
+}
+
+# ─── Hash-based color for custom tasks (injection-safe) ──────────
+
+_ct_hash_rgb() {
+    local result
+    result="$(python3 - "$1" <<'PYEOF'
+import sys, hashlib, colorsys
+h = int(hashlib.sha256(sys.argv[1].encode()).hexdigest()[:8], 16)
+r, g, b = colorsys.hls_to_rgb((h % 360) / 360, .5, .7)
+print(f'{int(r*255)};{int(g*255)};{int(b*255)}')
+PYEOF
+)" 2>/dev/null
+    echo "${result:-120;120;180}"
 }
 
 # ─── Timer (smart: only counts active time between prompts) ──────
-#
-# How it works:
-# - Every prompt (precmd), we check the gap since last prompt
-# - Gap < CT_IDLE (default 10 min) → active time, add to counter
-# - Gap >= CT_IDLE → you were away (sleep, meeting, other window), skip
-# - Result: only real focus time is counted
 
 _ct_now() {
-    if (( ${+EPOCHSECONDS} )); then
-        echo "$EPOCHSECONDS"
-    else
-        date +%s
-    fi
+    (( ${+EPOCHSECONDS} )) && echo "$EPOCHSECONDS" || date +%s
 }
 
 _ct_fmt_duration() {
-    local secs="$1"
-    local hrs=$(( secs / 3600 ))
-    local mins=$(( (secs % 3600) / 60 ))
-    if (( hrs > 0 )); then
-        echo "${hrs}h ${mins}m"
-    elif (( mins > 0 )); then
-        echo "${mins}m"
-    else
-        echo "<1m"
-    fi
+    local secs="${1:-0}" hrs mins
+    hrs=$(( secs / 3600 ))
+    mins=$(( (secs % 3600) / 60 ))
+    if (( hrs > 0 )); then echo "${hrs}h ${mins}m"
+    elif (( mins > 0 )); then echo "${mins}m"
+    else echo "<1m"; fi
 }
 
 _ct_tick() {
-    # Called every precmd — accumulates active time
     [[ -z "$_CT_CURRENT" ]] && return
     local now="$(_ct_now)"
     if (( _CT_LAST_PROMPT > 0 )); then
         local gap=$(( now - _CT_LAST_PROMPT ))
-        if (( gap > 0 && gap < _CT_IDLE )); then
-            (( _CT_ACTIVE += gap ))
-        fi
+        (( gap > 0 && gap < _CT_IDLE )) && (( _CT_ACTIVE += gap ))
     fi
     _CT_LAST_PROMPT=$now
 }
 
 _ct_active_time() {
-    # Returns formatted active time
     (( _CT_ACTIVE > 0 )) || { echo "<1m"; return; }
     _ct_fmt_duration "$_CT_ACTIVE"
 }
@@ -121,17 +122,14 @@ _ct_active_time() {
 # ─── Task log ────────────────────────────────────────────────────
 
 _ct_log_entry() {
-    local action="$1" label="$2" duration="$3"
-    local ts="$(date '+%Y-%m-%d %H:%M')"
     mkdir -p "$_CT_DIR"
-    echo "${ts}|${action}|${label}|${duration}" >> "${_CT_DIR}/log"
+    echo "$(date '+%Y-%m-%d %H:%M')|$1|$2|$3" >> "${_CT_DIR}/log"
 }
 
 _ct_log_end_current() {
     [[ -z "$_CT_CURRENT" ]] && return
-    _ct_tick  # capture final gap
-    local elapsed="$(_ct_active_time)"
-    _ct_log_entry "end" "$_CT_CURRENT" "$elapsed"
+    _ct_tick
+    _ct_log_entry "end" "$_CT_CURRENT" "$(_ct_active_time)"
 }
 
 # ─── iTerm2 / WezTerm escape sequences ──────────────────────────
@@ -174,65 +172,54 @@ _ct_title() {
 
 _ct_precmd() {
     [[ -z "$_CT_CURRENT" ]] && return
-
-    # Tick the timer (smart: skips idle gaps)
     _ct_tick
 
     local badge="$_CT_CURRENT"
-
-    # Git branch
-    local branch
-    branch="$(git branch --show-current 2>/dev/null)"
+    local branch="$(git branch --show-current 2>/dev/null)"
     [[ -n "$branch" ]] && badge+=$'\n'"$branch"
 
-    # Short path (last 2 components)
     local short_path="${PWD/#$HOME/~}"
     if [[ "$short_path" == */*/* ]]; then
-        local parent="${${PWD:h}:t}"
-        short_path="…/${parent}/${PWD:t}"
+        short_path="…/${PWD:h:t}/${PWD:t}"
     fi
     badge+=$'\n'"$short_path"
-
-    # Active time
-    local active="$(_ct_active_time)"
-    badge+=$'\n'"$active"
+    badge+=$'\n'"$(_ct_active_time)"
 
     _ct_badge "$badge"
     _ct_title "◈ $_CT_CURRENT"
 }
 
-# Register precmd hook
+# Register precmd hook (safe: no duplicates)
 autoload -Uz add-zsh-hook 2>/dev/null
 if (( $+functions[add-zsh-hook] )); then
     add-zsh-hook precmd _ct_precmd
-else
+elif [[ ! " ${precmd_functions[*]} " == *" _ct_precmd "* ]]; then
     precmd_functions+=(_ct_precmd)
 fi
 
-# ─── Icon generation (transparent, automatic) ───────────────────
+# ─── Icon generation ─────────────────────────────────────────────
 
 _ct_ensure_icon() {
-    local task="$1"
-    local slug="$(_ct_slug "$task")"
+    local slug="$(_ct_slug "$1")"
     local icon_path="${_CT_ICON_DIR}/${slug}.png"
 
     [[ -f "$icon_path" ]] && echo "$icon_path" && return 0
 
+    if ! command -v python3 &>/dev/null; then return 1; fi
     if ! python3 -c "from PIL import Image" 2>/dev/null; then
         if [[ ! -f "${_CT_DIR}/.pillow-warned" ]]; then
-            echo -e "\033[33m  Pillow nicht gefunden — pip install Pillow fuer Background-Images\033[0m" >&2
+            echo -e "\033[33m  pip install Pillow for background images\033[0m" >&2
             touch "${_CT_DIR}/.pillow-warned" 2>/dev/null
         fi
         return 1
     fi
 
     mkdir -p "$_CT_ICON_DIR"
-
     local gen_script="${_CT_DIR}/gen-icons.py"
     if [[ -f "$gen_script" ]]; then
-        python3 "$gen_script" --task "$task" --out "$icon_path" 2>/dev/null
+        python3 "$gen_script" --task "$1" --out "$icon_path" 2>/dev/null
     else
-        python3 - "$task" "$icon_path" <<'PYEOF'
+        python3 - "$1" "$icon_path" <<'PYEOF'
 import sys, hashlib, colorsys, os
 from PIL import Image, ImageDraw, ImageFont
 name, out = sys.argv[1], sys.argv[2]
@@ -255,15 +242,13 @@ d.text(((W-(bb[2]-bb[0]))//2, H//2-50), txt, fill=c, font=f)
 img.save(out)
 PYEOF
     fi
-
     [[ -f "$icon_path" ]] && echo "$icon_path" || return 1
 }
 
 # ─── ASCII art fallback ─────────────────────────────────────────
 
 _ct_ascii() {
-    local task="$1" label="$2"
-    local r="\033[0m"
+    local task="$1" label="$2" r="\033[0m"
     case "$task" in
         box|aitb) echo -e "\033[1;34m
         ╭───────────────╮
@@ -329,28 +314,21 @@ _ct_ascii() {
 # ─── Main ────────────────────────────────────────────────────────
 
 ct() {
-    # No args — show current task + context
-    if [[ -z "$1" ]]; then
+    # No args — show current task or brief help
+    if [[ -z "$1" || "$1" =~ ^[[:space:]]+$ ]]; then
         if [[ -n "$_CT_CURRENT" ]]; then
             _ct_tick
-            local active="$(_ct_active_time)"
             local branch="$(git branch --show-current 2>/dev/null)"
-            local short_path="${PWD/#$HOME/~}"
             echo ""
             echo -e "  \033[1;37m◈ $_CT_CURRENT\033[0m"
             [[ -n "$branch" ]] && echo -e "  \033[34m$branch\033[0m"
-            echo -e "  \033[2m$short_path\033[0m"
-            echo -e "  \033[33m$active active\033[0m"
+            echo -e "  \033[2m${PWD/#$HOME/~}\033[0m"
+            echo -e "  \033[33m$(_ct_active_time) active\033[0m"
             echo ""
         else
             echo ""
-            echo "  ct <name>     Tag terminal (icon auto-generated)"
-            echo "  ct clear      Reset"
-            echo "  ct list       Show all"
-            echo "  ct log        Task history"
-            echo ""
-            echo "  Pre-built:  box  li  web  infra  brane  sales  content"
-            echo "  Custom:     ct deploy  ct debug  ct whatever"
+            echo "  ct <name>     Tag terminal"
+            echo "  ct help       Full help"
             echo ""
         fi
         return 0
@@ -358,27 +336,101 @@ ct() {
 
     local task="${1:l}"
 
-    # ── List
+    # ── Help
+    if [[ "$task" == "help" || "$task" == "-h" || "$task" == "--help" ]]; then
+        cat <<HELPEOF
+
+  ct — Terminal Task Tagger (v${CT_VERSION})
+
+  USAGE
+    ct <name>           Tag this terminal with a task
+    ct                  Show current task + context
+    ct clear            Reset (remove background, badge, tab color)
+    ct list             Show all available tasks
+    ct log [N]          Show task history (last N entries, default 20)
+    ct log clear        Clear task history
+    ct help             This help
+    ct version          Show version
+
+  HOW IT WORKS
+    Any name works — icons are auto-generated on first use.
+    Pre-built tasks have hand-crafted icons.
+    Custom tasks get a semantic icon (deploy → rocket, debug → bug, etc.)
+    or a unique geometric shape with hash-based color.
+
+  SMART TIMER
+    Only counts active time — idle gaps are excluded.
+    A gap > 10 min between prompts = you were away (not counted).
+    Configure threshold: export CT_IDLE=300  (5 min)
+
+  BADGE (iTerm2 / WezTerm)
+    Updates every prompt with: task, git branch, path, active time.
+
+  PRE-BUILT TASKS
+    box / aitb      AI in the Box     (blue)
+    li / linkedin   LinkedIn          (cyan)
+    web / site      Website           (green)
+    infra           Infrastruktur     (yellow)
+    brane           Brane AIF         (red)
+    sales           Sales             (orange)
+    content         Content           (purple)
+
+  CONFIG
+    Add custom tasks in ~/.ct/config.zsh:
+      _CT_TASKS+=( myapp "My App;80;140;220;myapp" )
+
+    Format: key "Label;R;G;B;icon_file"
+
+  ITERM2 TIP
+    Adjust blending: Preferences → Profiles → Window → Background Image
+
+HELPEOF
+        return 0
+    fi
+
+    # ── Version
+    if [[ "$task" == "version" || "$task" == "-v" || "$task" == "--version" ]]; then
+        echo "  ct $CT_VERSION"
+        return 0
+    fi
+
+    # ── List (dynamic from _CT_TASKS)
     if [[ "$task" == "list" || "$task" == "ls" ]]; then
         echo ""
-        echo -e "  \033[1mPre-built:\033[0m"
-        echo -e "    box         AI in the Box     \033[34m████\033[0m"
-        echo -e "    li          LinkedIn          \033[36m████\033[0m"
-        echo -e "    web         Website           \033[32m████\033[0m"
-        echo -e "    infra       Infrastruktur     \033[33m████\033[0m"
-        echo -e "    brane       Brane AIF         \033[31m████\033[0m"
-        echo -e "    sales       Sales             \033[38;5;208m████\033[0m"
-        echo -e "    content     Content           \033[35m████\033[0m"
+        echo -e "  \033[1mTasks:\033[0m"
+        # Collect unique tasks (prefer shortest key per icon)
+        local -A icon_to_key icon_to_def
+        local key def icon
+        for key in ${(k)_CT_TASKS}; do
+            def="${_CT_TASKS[$key]}"
+            icon="${def##*;}"
+            if [[ -z "${icon_to_key[$icon]}" ]] || (( ${#key} < ${#${icon_to_key[$icon]}} )); then
+                icon_to_key[$icon]="$key"
+                icon_to_def[$icon]="$def"
+            fi
+        done
+        for icon in ${(ko)icon_to_key}; do
+            key="${icon_to_key[$icon]}"
+            def="${icon_to_def[$icon]}"
+            local label="${def%%;*}"
+            local rest="${def#*;}"
+            local r="${rest%%;*}"; rest="${rest#*;}"
+            local g="${rest%%;*}"; rest="${rest#*;}"
+            local b="${rest%%;*}"
+            printf "    %-12s %-20s \033[38;2;%d;%d;%dm████\033[0m\n" "$key" "$label" "$r" "$g" "$b"
+        done
         if [[ -d "$_CT_ICON_DIR" ]]; then
             local -a customs
+            local f name
             for f in "${_CT_ICON_DIR}"/*.png(N); do
-                local name="${f:t:r}"
-                [[ "$name" == (box|li|web|infra|brane|sales|content) ]] && continue
+                name="${f:t:r}"
+                [[ -n "${icon_to_key[$name]}" ]] && continue
                 customs+=("$name")
             done
             if (( ${#customs} > 0 )); then
                 echo ""
                 echo -e "  \033[1mCustom (cached):\033[0m"
+                local c
                 for c in "${customs[@]}"; do
                     echo "    $c"
                 done
@@ -390,27 +442,31 @@ ct() {
 
     # ── Log
     if [[ "$task" == "log" ]]; then
+        # ct log clear
+        if [[ "$2" == "clear" ]]; then
+            rm -f "${_CT_DIR}/log"
+            echo -e "\n  \033[2mLog cleared.\033[0m\n"
+            return 0
+        fi
         if [[ ! -f "${_CT_DIR}/log" ]]; then
             echo -e "\n  \033[2mNo task history yet.\033[0m\n"
             return 0
         fi
+        local n="${2:-20}"
         echo ""
         echo -e "  \033[1mTask History:\033[0m"
         echo ""
-        # Show last 20 entries, formatted
-        tail -20 "${_CT_DIR}/log" | while IFS='|' read -r ts action label duration; do
+        tail -"$n" "${_CT_DIR}/log" | while IFS='|' read -r ts action label duration; do
             if [[ "$action" == "start" ]]; then
                 echo -e "  \033[32m▶\033[0m $ts  \033[1m$label\033[0m"
             elif [[ "$action" == "end" ]]; then
                 echo -e "  \033[31m■\033[0m $ts  \033[2m$label\033[0m  ($duration)"
             fi
         done
-        # Show current if active
         if [[ -n "$_CT_CURRENT" ]]; then
             _ct_tick
-            local active="$(_ct_active_time)"
             echo ""
-            echo -e "  \033[33m●\033[0m now       \033[1m$_CT_CURRENT\033[0m  ($active active)"
+            echo -e "  \033[33m●\033[0m now       \033[1m$_CT_CURRENT\033[0m  ($(_ct_active_time) active)"
         fi
         echo ""
         return 0
@@ -418,7 +474,9 @@ ct() {
 
     # ── Clear / Reset
     if [[ "$task" == "clear" || "$task" == "reset" ]]; then
-        _ct_log_end_current
+        if [[ -n "$_CT_CURRENT" ]]; then
+            _ct_log_end_current
+        fi
         _ct_badge ""
         _ct_tab_color_reset
         _ct_bg_image ""
@@ -430,13 +488,25 @@ ct() {
         return 0
     fi
 
+    # ── Validate task name
+    local slug="$(_ct_slug "$task")"
+
+    # ── Same task? Skip re-logging but reset timer
+    if [[ -n "$_CT_CURRENT" ]] && {
+       [[ "$_CT_CURRENT" == "${_CT_TASKS[$task]%%;*}" ]] ||
+       [[ "$_CT_CURRENT" == "$1" ]]
+    }; then
+        _CT_ACTIVE=0
+        _CT_LAST_PROMPT="$(_ct_now)"
+        echo -e "\n  \033[1;37m◈ $_CT_CURRENT\033[0m  (timer reset)\n"
+        return 0
+    fi
+
     # ── Log end of previous task
     _ct_log_end_current
 
     # ── Resolve task
-    local label rgb_r rgb_g rgb_b icon_file slug
-    slug="$(_ct_slug "$task")"
-
+    local label rgb_r rgb_g rgb_b icon_file
     if _ct_parse "$task"; then
         label="$_p_label"
         rgb_r="$_p_r"; rgb_g="$_p_g"; rgb_b="$_p_b"
@@ -444,8 +514,9 @@ ct() {
     else
         label="$1"
         local rgb="$(_ct_hash_rgb "$slug")"
-        rgb_r="${rgb%%;*}"; local _rest="${rgb#*;}"
-        rgb_g="${_rest%%;*}"; rgb_b="${_rest#*;}"
+        local rest
+        rgb_r="${rgb%%;*}"; rest="${rgb#*;}"
+        rgb_g="${rest%%;*}"; rgb_b="${rest#*;}"
         icon_file="$slug"
     fi
 
@@ -466,8 +537,6 @@ ct() {
     _CT_CURRENT="$label"
     _CT_ACTIVE=0
     _CT_LAST_PROMPT="$(_ct_now)"
-
-    # Log start
     _ct_log_entry "start" "$label" ""
 
     echo ""
@@ -479,12 +548,16 @@ ct() {
 
 _ct_complete() {
     local -a tasks
-    tasks=(box li web infra brane sales content clear list log)
+    # All keys from _CT_TASKS
+    tasks=(${(k)_CT_TASKS})
+    # Subcommands
+    tasks+=(clear reset list log help version)
+    # Cached custom icons
     if [[ -d "$_CT_ICON_DIR" ]]; then
+        local f name
         for f in "${_CT_ICON_DIR}"/*.png(N); do
-            local name="${f:t:r}"
-            [[ "$name" == (box|li|web|infra|brane|sales|content) ]] && continue
-            tasks+=("$name")
+            name="${f:t:r}"
+            [[ -z "${_CT_TASKS[$name]}" ]] && tasks+=("$name")
         done
     fi
     _describe 'task' tasks
