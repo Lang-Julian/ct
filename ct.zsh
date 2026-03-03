@@ -49,7 +49,7 @@ _CT_TASKS=(
 
 # ─── Reserved subcommands (not valid task names) ────────────────
 
-_CT_RESERVED=(help -h --help version clear reset list ls log)
+_CT_RESERVED=(help -h --help version clear reset list ls log delete rm)
 
 # ─── Parse task definition ──────────────────────────────────────
 
@@ -340,49 +340,41 @@ ct() {
     if [[ "$task" == "help" || "$task" == "-h" || "$task" == "--help" ]]; then
         cat <<HELPEOF
 
-  ct — Terminal Task Tagger (v${CT_VERSION})
+  ct — context tag (v${CT_VERSION})
+  Tag terminals, not tabs.
 
   USAGE
-    ct <name>           Tag this terminal with a task
-    ct                  Show current task + context
+    ct <name>           Tag this terminal (icon auto-generated)
+    ct                  Show current task + branch + path + timer
     ct clear            Reset (remove background, badge, tab color)
-    ct list             Show all available tasks
-    ct log [N]          Show task history (last N entries, default 20)
-    ct log clear        Clear task history
+    ct list             Show all tasks (pre-built + custom)
+    ct delete <name>    Delete a cached custom icon
+    ct log [N]          Task history (last N entries, default 20)
+    ct log clear        Clear history
     ct help             This help
-    ct version          Show version
+    ct version          Version
 
   HOW IT WORKS
-    Any name works — icons are auto-generated on first use.
-    Pre-built tasks have hand-crafted icons.
-    Custom tasks get a semantic icon (deploy → rocket, debug → bug, etc.)
-    or a unique geometric shape with hash-based color.
+    Any name works. First use generates an icon automatically.
+    Custom tasks get semantic icons (deploy → rocket, debug → bug,
+    docker → whale, meeting → headset, etc.) or unique geometric shapes.
+    Icons are cached in ~/.ct/icons/ — instant after first use.
 
   SMART TIMER
-    Only counts active time — idle gaps are excluded.
-    A gap > 10 min between prompts = you were away (not counted).
-    Configure threshold: export CT_IDLE=300  (5 min)
+    Only counts active focus time. Idle gaps are excluded.
+    Gap > 10 min between prompts = you were away (not counted).
+    Threshold: export CT_IDLE=300  (5 min, default: 600)
 
   BADGE (iTerm2 / WezTerm)
-    Updates every prompt with: task, git branch, path, active time.
-
-  PRE-BUILT TASKS
-    box / aitb      AI in the Box     (blue)
-    li / linkedin   LinkedIn          (cyan)
-    web / site      Website           (green)
-    infra           Infrastruktur     (yellow)
-    brane           Brane AIF         (red)
-    sales           Sales             (orange)
-    content         Content           (purple)
+    Updates every prompt:  task · git branch · path · active time
 
   CONFIG
-    Add custom tasks in ~/.ct/config.zsh:
+    ~/.ct/config.zsh — add custom tasks with fixed colors:
       _CT_TASKS+=( myapp "My App;80;140;220;myapp" )
 
-    Format: key "Label;R;G;B;icon_file"
-
-  ITERM2 TIP
-    Adjust blending: Preferences → Profiles → Window → Background Image
+  UNINSTALL
+    rm -rf ~/.ct
+    Remove the source line from ~/.zshrc
 
 HELPEOF
         return 0
@@ -472,6 +464,23 @@ HELPEOF
         return 0
     fi
 
+    # ── Delete cached icon
+    if [[ "$task" == "delete" || "$task" == "rm" ]]; then
+        if [[ -z "$2" ]]; then
+            echo -e "\n  Usage: ct delete <name>\n"
+            return 1
+        fi
+        local del_slug="$(_ct_slug "${2:l}")"
+        local del_path="${_CT_ICON_DIR}/${del_slug}.png"
+        if [[ -f "$del_path" ]]; then
+            rm -f "$del_path"
+            echo -e "\n  \033[2mDeleted: $del_slug\033[0m\n"
+        else
+            echo -e "\n  \033[2mNot found: $del_slug\033[0m\n"
+        fi
+        return 0
+    fi
+
     # ── Clear / Reset
     if [[ "$task" == "clear" || "$task" == "reset" ]]; then
         if [[ -n "$_CT_CURRENT" ]]; then
@@ -551,7 +560,7 @@ _ct_complete() {
     # All keys from _CT_TASKS
     tasks=(${(k)_CT_TASKS})
     # Subcommands
-    tasks+=(clear reset list log help version)
+    tasks+=(clear reset list log help version delete)
     # Cached custom icons
     if [[ -d "$_CT_ICON_DIR" ]]; then
         local f name
