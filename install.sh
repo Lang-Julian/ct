@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# ct installer — sets up ~/.ct and adds source line to shell config
 set -e
 
 CT_DIR="$HOME/.ct"
@@ -10,56 +9,55 @@ echo "  ct — Terminal Task Tagger"
 echo "  ─────────────────────────"
 echo ""
 
-# ── Create ~/.ct
+# ── Check zsh
+if ! command -v zsh &>/dev/null; then
+    echo "  error: ct requires zsh"
+    exit 1
+fi
+
+# ── Install files
 mkdir -p "$CT_DIR/icons"
 cp "$SCRIPT_DIR/ct.zsh" "$CT_DIR/ct.zsh"
 cp "$SCRIPT_DIR/gen-icons.py" "$CT_DIR/gen-icons.py"
+chmod +x "$CT_DIR/gen-icons.py"
 
-echo "  Installed to $CT_DIR"
+echo "  Installed → $CT_DIR"
 
-# ── Generate pre-built icons (if Pillow available)
+# ── Generate pre-built icons
 if python3 -c "from PIL import Image" 2>/dev/null; then
     echo "  Generating icons..."
     python3 "$CT_DIR/gen-icons.py" --all --dir "$CT_DIR/icons"
 else
     echo ""
-    echo "  Optional: Install Pillow for background images (iTerm2):"
+    echo "  Background images need Pillow:"
     echo "    pip install Pillow"
     echo ""
-    echo "  ct works without it (badge + tab color + ASCII art fallback)."
+    echo "  Without it: badge + tab color + ASCII art still work."
 fi
 
-# ── Add to shell config
-SHELL_RC=""
-if [[ -f "$HOME/.zshrc" ]]; then
-    SHELL_RC="$HOME/.zshrc"
-elif [[ -f "$HOME/.bashrc" ]]; then
-    SHELL_RC="$HOME/.bashrc"
-fi
-
+# ── Shell config
 SOURCE_LINE='[[ -f "$HOME/.ct/ct.zsh" ]] && source "$HOME/.ct/ct.zsh"'
 
-if [[ -n "$SHELL_RC" ]]; then
-    if grep -qF ".ct/ct.zsh" "$SHELL_RC" 2>/dev/null; then
-        echo "  Shell config already set up."
+if [[ -f "$HOME/.zshrc" ]]; then
+    if grep -qF ".ct/ct.zsh" "$HOME/.zshrc" 2>/dev/null; then
+        echo "  .zshrc already configured."
     else
-        echo "" >> "$SHELL_RC"
-        echo "# ct — Terminal Task Tagger" >> "$SHELL_RC"
-        echo "$SOURCE_LINE" >> "$SHELL_RC"
-        echo "  Added to $(basename "$SHELL_RC")"
+        echo "" >> "$HOME/.zshrc"
+        echo "# ct — Terminal Task Tagger (https://github.com/Lang-Julian/ct)" >> "$HOME/.zshrc"
+        echo "$SOURCE_LINE" >> "$HOME/.zshrc"
+        echo "  Added to .zshrc"
     fi
 else
     echo ""
-    echo "  Add this to your shell config:"
+    echo "  Add to your .zshrc:"
     echo "    $SOURCE_LINE"
 fi
 
 echo ""
-echo "  Done. Restart your shell or run:"
-echo "    source $CT_DIR/ct.zsh"
+echo "  Done. Usage:"
 echo ""
-echo "  Usage:"
-echo "    ct box        # set task tag"
-echo "    ct my-thing   # any name works (auto-generates icon)"
-echo "    ct clear      # reset"
+echo "    source ~/.ct/ct.zsh   # activate now"
+echo "    ct box                # tag terminal"
+echo "    ct my-project         # any name works"
+echo "    ct clear              # reset"
 echo ""

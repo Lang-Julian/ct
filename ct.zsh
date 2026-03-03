@@ -1,71 +1,70 @@
 #!/usr/bin/env zsh
-# ct — Claude Terminal Task Tagger
+# ct — Terminal Task Tagger
 # Visual task identification for fast terminal switching.
-# Supports iTerm2 (background image + badge + tab color) with fallback for other terminals.
+# Supports iTerm2 (background image + badge + tab color) and any terminal (title + ASCII art).
 #
-# Usage:  ct <task>     Set task tag (any name works, icons auto-generated)
+# Usage:  ct <name>     Tag terminal (any name — icon auto-generated on first use)
 #         ct clear      Reset everything
-#         ct list       Show available pre-built icons
-#         ct            Show help
+#         ct list       Show all tasks with icons
+#         ct            Show current task or help
 
 _CT_DIR="${CT_DIR:-$HOME/.ct}"
 _CT_ICON_DIR="${_CT_DIR}/icons"
+_CT_CURRENT=""
 
-# ─── Pre-built task definitions ──────────────────────────────────
+# ─── Pre-built tasks ────────────────────────────────────────────
+# Format:  key  "label;r;g;b;icon_file"
 
-typeset -gA _CT_LABELS _CT_TAB_RGB _CT_ICON_FILE _CT_ANSI
-
-_CT_LABELS=(
-    box       "AI in the Box"
-    aitb      "AI in the Box"
-    li        "LinkedIn"
-    linkedin  "LinkedIn"
-    web       "Website"
-    site      "Website"
-    infra     "Infrastruktur"
-    brane     "Brane AIF"
-    sales     "Sales"
-    content   "Content"
+typeset -gA _CT_TASKS
+_CT_TASKS=(
+    box       "AI in the Box;30;100;220;box"
+    aitb      "AI in the Box;30;100;220;box"
+    li        "LinkedIn;0;119;181;li"
+    linkedin  "LinkedIn;0;119;181;li"
+    web       "Website;40;180;70;web"
+    site      "Website;40;180;70;web"
+    infra     "Infrastruktur;220;170;30;infra"
+    brane     "Brane AIF;200;40;70;brane"
+    sales     "Sales;240;130;20;sales"
+    content   "Content;140;60;200;content"
 )
 
-_CT_TAB_RGB=(
-    box       "30;100;220"
-    aitb      "30;100;220"
-    li        "0;119;181"
-    linkedin  "0;119;181"
-    web       "40;180;70"
-    site      "40;180;70"
-    infra     "220;170;30"
-    brane     "200;40;70"
-    sales     "240;130;20"
-    content   "140;60;200"
-)
+# ─── Load user config (optional) ────────────────────────────────
 
-_CT_ICON_FILE=(
-    box       "box"
-    aitb      "box"
-    li        "li"
-    linkedin  "li"
-    web       "web"
-    site      "web"
-    infra     "infra"
-    brane     "brane"
-    sales     "sales"
-    content   "content"
-)
+[[ -f "${_CT_DIR}/config.zsh" ]] && source "${_CT_DIR}/config.zsh"
 
-_CT_ANSI=(
-    box       "\033[1;34m"
-    aitb      "\033[1;34m"
-    li        "\033[1;36m"
-    linkedin  "\033[1;36m"
-    web       "\033[1;32m"
-    site      "\033[1;32m"
-    infra     "\033[1;33m"
-    brane     "\033[1;31m"
-    sales     "\033[38;5;208m"
-    content   "\033[1;35m"
-)
+# ─── Parse task definition ──────────────────────────────────────
+
+_ct_parse() {
+    # Input: task key. Sets: _p_label, _p_r, _p_g, _p_b, _p_icon
+    local def="${_CT_TASKS[$1]}"
+    if [[ -n "$def" ]]; then
+        _p_label="${def%%;*}"; local rest="${def#*;}"
+        _p_r="${rest%%;*}"; rest="${rest#*;}"
+        _p_g="${rest%%;*}"; rest="${rest#*;}"
+        _p_b="${rest%%;*}"; _p_icon="${rest#*;}"
+        return 0
+    fi
+    return 1
+}
+
+# ─── Hash-based color for custom tasks ──────────────────────────
+
+_ct_hash_rgb() {
+    # Deterministic RGB from name. Same name → same color.
+    python3 -c "
+import hashlib, colorsys
+h=int(hashlib.sha256('$1'.encode()).hexdigest()[:8],16)
+r,g,b=colorsys.hls_to_rgb((h%360)/360,.5,.7)
+print(f'{int(r*255)};{int(g*255)};{int(b*255)}')
+" 2>/dev/null || echo "120;120;180"
+}
+
+# ─── Slug: safe filename from any input ─────────────────────────
+
+_ct_slug() {
+    echo "${1//[^a-zA-Z0-9_-]/-}" | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g;s/^-//;s/-$//'
+}
 
 # ─── iTerm2 escape sequences ────────────────────────────────────
 
@@ -78,11 +77,9 @@ _ct_badge() {
 
 _ct_tab_color() {
     _ct_is_iterm || return
-    local r="${1%%;*}" rest="${1#*;}"
-    local g="${rest%%;*}" b="${rest#*;}"
-    printf "\e]6;1;bg;red;brightness;%s\a" "$r"
-    printf "\e]6;1;bg;green;brightness;%s\a" "$g"
-    printf "\e]6;1;bg;blue;brightness;%s\a" "$b"
+    printf "\e]6;1;bg;red;brightness;%s\a" "$1"
+    printf "\e]6;1;bg;green;brightness;%s\a" "$2"
+    printf "\e]6;1;bg;blue;brightness;%s\a" "$3"
 }
 
 _ct_tab_color_reset() {
@@ -103,179 +100,151 @@ _ct_title() {
     printf "\033]0;%s\007" "$1"
 }
 
-# ─── Icon generation ─────────────────────────────────────────────
+# ─── Icon generation (transparent, automatic) ───────────────────
 
-_ct_gen_icon() {
+_ct_ensure_icon() {
     local task="$1"
-    local out_path="${_CT_ICON_DIR}/${task}.png"
+    local slug="$(_ct_slug "$task")"
+    local icon_path="${_CT_ICON_DIR}/${slug}.png"
 
-    # Already exists — skip
-    [[ -f "$out_path" ]] && echo "$out_path" && return 0
+    # Already cached
+    if [[ -f "$icon_path" ]]; then
+        echo "$icon_path"
+        return 0
+    fi
 
-    # Need python3 + PIL
+    # Check Pillow availability
     if ! python3 -c "from PIL import Image" 2>/dev/null; then
-        echo "" && return 1
+        # Warn once
+        if [[ ! -f "${_CT_DIR}/.pillow-warned" ]]; then
+            echo -e "\033[33m  Pillow nicht gefunden — pip install Pillow fuer Background-Images\033[0m" >&2
+            touch "${_CT_DIR}/.pillow-warned" 2>/dev/null
+        fi
+        return 1
     fi
 
     mkdir -p "$_CT_ICON_DIR"
 
-    python3 "${_CT_DIR}/gen-icons.py" --task "$task" --out "$out_path" 2>/dev/null
-
-    if [[ -f "$out_path" ]]; then
-        echo "$out_path"
+    # Use gen-icons.py if available, otherwise inline fallback
+    local gen_script="${_CT_DIR}/gen-icons.py"
+    if [[ -f "$gen_script" ]]; then
+        python3 "$gen_script" --task "$task" --out "$icon_path" 2>/dev/null
     else
-        echo ""
-        return 1
+        # Inline fallback — simple text icon
+        python3 - "$task" "$icon_path" <<'PYEOF'
+import sys, hashlib, colorsys, os
+from PIL import Image, ImageDraw, ImageFont
+name, out = sys.argv[1], sys.argv[2]
+os.makedirs(os.path.dirname(out), exist_ok=True)
+W, H, A = 1000, 800, 38
+h = int(hashlib.sha256(name.encode()).hexdigest()[:8], 16)
+r, g, b = colorsys.hls_to_rgb((h % 360) / 360, 0.5, 0.7)
+c = (int(r*255), int(g*255), int(b*255), A)
+img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+d = ImageDraw.Draw(img)
+d.rounded_rectangle([W//2-250, H//2-150, W//2+250, H//2+100], radius=25, outline=c, width=5)
+txt = name.upper().replace("-", " ").replace("_", " ")
+for p in [
+    "~/Library/Fonts/JetBrainsMonoNerdFontPropo-Bold.ttf",
+    "/System/Library/Fonts/Menlo.ttc",
+]:
+    try:
+        f = ImageFont.truetype(os.path.expanduser(p), min(64, max(32, 700 // max(len(txt), 1))))
+        break
+    except: f = ImageFont.load_default()
+bb = d.textbbox((0, 0), txt, font=f)
+d.text(((W-(bb[2]-bb[0]))//2, H//2-50), txt, fill=c, font=f)
+img.save(out)
+PYEOF
     fi
+
+    [[ -f "$icon_path" ]] && echo "$icon_path" || return 1
 }
 
-# ─── ASCII fallback (non-iTerm2 terminals) ───────────────────────
+# ─── ASCII art fallback ─────────────────────────────────────────
 
-_ct_ascii_fallback() {
+_ct_ascii() {
     local task="$1" label="$2"
-    local c="${_CT_ANSI[$task]:-\033[1;37m}"
     local r="\033[0m"
-
     case "$task" in
-        box|aitb)
-            cat <<EOF
-$(echo -e "${c}")
+        box|aitb) echo -e "\033[1;34m
         ╭───────────────╮
        ╱│              ╱│
       ╱ │   ◈  A I   ╱ │
      ╭───────────────╮  │
-     │  │            │  │
      │  │   I N      │  │
-     │  │     T H E  │  │
      │  ╰────────────│──╯
      │ ╱    B O X    │ ╱
-     │╱              │╱
-     ╰───────────────╯
-$(echo -e "${r}")
-EOF
-            ;;
-        li|linkedin)
-            cat <<EOF
-$(echo -e "${c}")
-     ╔═════════════════╗
-     ║                 ║
-     ║   ██            ║
-     ║   ██            ║
-     ║                 ║
-     ║   ██  ███████   ║
-     ║   ██  ██   ██   ║
-     ║   ██  ██   ██   ║
-     ║   ██  ██   ██   ║
-     ║                 ║
-     ╚═════════════════╝
-$(echo -e "${r}")
-EOF
-            ;;
-        web|site)
-            cat <<EOF
-$(echo -e "${c}")
-     ┌─── ● ● ● ───────────┐
-     │  ┌───────────────┐  │
-     │  │    ╱ ─── ╲    │  │
-     │  │   ╱ ╱   ╲ ╲   │  │
-     │  │──●───────●──│  │
-     │  │   ╲ ╲   ╱ ╱   │  │
-     │  │    ╲ ─── ╱    │  │
-     │  └───────────────┘  │
-     └─────────────────────┘
-$(echo -e "${r}")
-EOF
-            ;;
-        infra)
-            cat <<EOF
-$(echo -e "${c}")
-     ┌─────────────────────┐
-     │ ▪▪▪  ════════  ◉ ◉ │
-     ├─────────────────────┤
-     │ ▪▪▪  ════════  ◉ ◉ │
-     ├─────────────────────┤
-     │ ▪▪▪  ════════  ◉ ◉ │
-     ├─────────────────────┤
-     │ ▪▪▪  ════════  ◉ ◉ │
-     └──────────┬──────────┘
-          ══════╧══════
-$(echo -e "${r}")
-EOF
-            ;;
-        brane)
-            cat <<EOF
-$(echo -e "${c}")
-            ╱╲
-           ╱  ╲
-          ╱ ╱╲ ╲
-         ╱ ╱  ╲ ╲
-        ╱ ╱ ◈◈ ╲ ╲
-       ╱ ╱      ╲ ╲
-      ╱  ╱ BRANE  ╲ ╲
-     ╱  ╱   AIF    ╲ ╲
-     ╲  ╲──────────╱ ╱
-      ╲  ╲────────╱ ╱
-       ╲──────────╱
-$(echo -e "${r}")
-EOF
-            ;;
-        sales)
-            cat <<EOF
-$(echo -e "${c}")
-                   ┃
-                ┃  ┃
-             ┃  ┃  ┃
-             ┃  ┃  ┃  ┃
-          ┃  ┃  ┃  ┃  ┃
-       ┃  ┃  ┃  ┃  ┃  ┃
-       ┃  ┃  ┃  ┃  ┃  ┃
-       ┻──┻──┻──┻──┻──┻───
-        S  A  L  E  S   ▲
-$(echo -e "${r}")
-EOF
-            ;;
-        content)
-            cat <<EOF
-$(echo -e "${c}")
-     ┌────────────────────┐
-     │ ≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡  │
-     │ ≡≡≡≡≡≡≡≡≡≡≡      │
-     │                    │
-     │ ≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡  │
-     │ ≡≡≡≡≡≡≡≡≡≡≡≡     │
-     │ ≡≡≡≡≡≡≡≡         │╲
-     │ ≡≡≡≡≡            │ ╲
-     └────────────────────┘✎
-$(echo -e "${r}")
-EOF
-            ;;
-        *)
-            local upper="${(U)task}"
-            cat <<EOF
-$(echo -e "${c}")
-     ╔════════════════════╗
-     ║                    ║
-     ║   $(printf '%-16s' "$upper")║
-     ║                    ║
-     ╚════════════════════╝
-$(echo -e "${r}")
-EOF
-            ;;
+     ╰───────────────╯${r}" ;;
+        li|linkedin) echo -e "\033[1;36m
+     ╔═══════════════╗
+     ║  ██           ║
+     ║  ██  ███████  ║
+     ║  ██  ██   ██  ║
+     ║  ██  ██   ██  ║
+     ╚═══════════════╝${r}" ;;
+        web|site) echo -e "\033[1;32m
+     ┌── ● ● ● ──────────┐
+     │  ┌──────────────┐  │
+     │  │   ╱──●──╲    │  │
+     │  │  ●───┼───●   │  │
+     │  │   ╲──●──╱    │  │
+     │  └──────────────┘  │
+     └────────────────────┘${r}" ;;
+        infra) echo -e "\033[1;33m
+     ┌───────────────────┐
+     │ ▪▪▪ ═══════  ◉ ◉ │
+     ├───────────────────┤
+     │ ▪▪▪ ═══════  ◉ ◉ │
+     ├───────────────────┤
+     │ ▪▪▪ ═══════  ◉ ◉ │
+     └────────┬──────────┘
+        ══════╧══════${r}" ;;
+        brane) echo -e "\033[1;31m
+          ╱╲
+         ╱╱╲╲
+        ╱╱◈◈╲╲
+       ╱╱ AIF ╲╲
+       ╲╲─────╱╱
+        ╲─────╱${r}" ;;
+        sales) echo -e "\033[38;5;208m
+              ┃
+           ┃  ┃
+        ┃  ┃  ┃  ┃
+     ┃  ┃  ┃  ┃  ┃
+     ┻──┻──┻──┻──┻──
+      S A L E S  ▲${r}" ;;
+        content) echo -e "\033[1;35m
+     ┌──────────────────┐
+     │ ≡≡≡≡≡≡≡≡≡≡≡≡≡≡ │
+     │ ≡≡≡≡≡≡≡≡≡≡     │
+     │ ≡≡≡≡≡≡≡≡≡≡≡≡≡  │
+     │ ≡≡≡≡≡≡≡≡       │
+     └──────────────────┘✎${r}" ;;
+        *) echo -e "\033[1;37m
+     ╔══════════════════╗
+     ║  $(printf '%-16s' "${(U)label}")║
+     ╚══════════════════╝${r}" ;;
     esac
 }
 
-# ─── Main function ───────────────────────────────────────────────
+# ─── Main ────────────────────────────────────────────────────────
 
 ct() {
+    # No args — show current task or help
     if [[ -z "$1" ]]; then
-        echo ""
-        echo "  ct <task>     Set task (any name — icons auto-generated)"
-        echo "  ct clear      Reset terminal"
-        echo "  ct list       Show pre-built tasks"
-        echo ""
-        echo "  Pre-built:  box  li  web  infra  brane  sales  content"
-        echo "  Custom:     ct my-project  ct debug  ct whatever"
-        echo ""
+        if [[ -n "$_CT_CURRENT" ]]; then
+            echo -e "\n  \033[1;37m◈ ${_CT_CURRENT}\033[0m (active)\n"
+        else
+            echo ""
+            echo "  ct <name>     Tag terminal (icon auto-generated)"
+            echo "  ct clear      Reset"
+            echo "  ct list       Show all"
+            echo ""
+            echo "  Pre-built:  box  li  web  infra  brane  sales  content"
+            echo "  Custom:     ct deploy  ct debug  ct whatever"
+            echo ""
+        fi
         return 0
     fi
 
@@ -284,20 +253,28 @@ ct() {
     # ── List
     if [[ "$task" == "list" || "$task" == "ls" ]]; then
         echo ""
-        echo "  Pre-built tasks:"
-        echo "    box / aitb      AI in the Box       (blue)"
-        echo "    li / linkedin   LinkedIn             (cyan)"
-        echo "    web / site      Website              (green)"
-        echo "    infra           Infrastruktur        (yellow)"
-        echo "    brane           Brane AIF            (red)"
-        echo "    sales           Sales                (orange)"
-        echo "    content         Content              (purple)"
-        echo ""
-        echo "  Custom icons in: $_CT_ICON_DIR/"
+        echo "  \033[1mPre-built:\033[0m"
+        echo "    box         AI in the Box     \033[34m████\033[0m"
+        echo "    li          LinkedIn          \033[36m████\033[0m"
+        echo "    web         Website           \033[32m████\033[0m"
+        echo "    infra       Infrastruktur     \033[33m████\033[0m"
+        echo "    brane       Brane AIF         \033[31m████\033[0m"
+        echo "    sales       Sales             \033[38;5;208m████\033[0m"
+        echo "    content     Content           \033[35m████\033[0m"
         if [[ -d "$_CT_ICON_DIR" ]]; then
-            local customs=("${_CT_ICON_DIR}"/*.png(N))
+            local -a customs
+            for f in "${_CT_ICON_DIR}"/*.png(N); do
+                local name="${f:t:r}"
+                # Skip pre-built
+                [[ "$name" == (box|li|web|infra|brane|sales|content) ]] && continue
+                customs+=("$name")
+            done
             if (( ${#customs} > 0 )); then
-                echo "  Generated: $(ls "$_CT_ICON_DIR"/*.png | xargs -I{} basename {} .png | tr '\n' ' ')"
+                echo ""
+                echo "  \033[1mCustom (cached):\033[0m"
+                for c in "${customs[@]}"; do
+                    echo "    $c"
+                done
             fi
         fi
         echo ""
@@ -310,45 +287,62 @@ ct() {
         _ct_tab_color_reset
         _ct_bg_image ""
         _ct_title "Terminal"
-        echo -e "\n  \033[2mTerminal reset.\033[0m\n"
+        _CT_CURRENT=""
+        echo -e "\n  \033[2mReset.\033[0m\n"
         return 0
     fi
 
-    local label="${_CT_LABELS[$task]:-$1}"
-    local rgb="${_CT_TAB_RGB[$task]:-100;100;100}"
+    # ── Resolve task
+    local label rgb_r rgb_g rgb_b icon_file slug
+    slug="$(_ct_slug "$task")"
 
-    # ── Resolve icon
-    local icon_key="${_CT_ICON_FILE[$task]}"
-    local icon_path=""
-
-    if [[ -n "$icon_key" ]]; then
-        icon_path="${_CT_ICON_DIR}/${icon_key}.png"
-        # Generate pre-built icon if missing
-        if [[ ! -f "$icon_path" ]]; then
-            icon_path="$(_ct_gen_icon "$icon_key")"
-        fi
+    if _ct_parse "$task"; then
+        label="$_p_label"
+        rgb_r="$_p_r"; rgb_g="$_p_g"; rgb_b="$_p_b"
+        icon_file="$_p_icon"
     else
-        # Custom task — auto-generate
-        icon_path="$(_ct_gen_icon "$task")"
+        # Custom task — hash-based color
+        label="$1"
+        local rgb="$(_ct_hash_rgb "$slug")"
+        rgb_r="${rgb%%;*}"; local _rest="${rgb#*;}"
+        rgb_g="${_rest%%;*}"; rgb_b="${_rest#*;}"
+        icon_file="$slug"
     fi
+
+    # ── Icon (auto-generate if needed, completely silent)
+    local icon_path=""
+    icon_path="$(_ct_ensure_icon "$icon_file" 2>/dev/null)"
 
     # ── Apply
     if _ct_is_iterm; then
         [[ -n "$icon_path" && -f "$icon_path" ]] && _ct_bg_image "$icon_path"
         _ct_badge "$label"
-        _ct_tab_color "$rgb"
+        _ct_tab_color "$rgb_r" "$rgb_g" "$rgb_b"
     else
-        _ct_ascii_fallback "$task" "$label"
+        _ct_ascii "$task" "$label"
     fi
 
     _ct_title "◈ $label"
+    _CT_CURRENT="$label"
 
     echo ""
     echo -e "  \033[1;37m◈ $label\033[0m"
-    if _ct_is_iterm; then
-        echo -e "  \033[2mBackground + Badge + Tab gesetzt.\033[0m"
-    else
-        echo -e "  \033[2mTitle gesetzt.\033[0m"
-    fi
     echo ""
 }
+
+# ─── Tab completion ──────────────────────────────────────────────
+
+_ct_complete() {
+    local -a tasks
+    tasks=(box li web infra brane sales content clear list)
+    # Add cached custom icons
+    if [[ -d "$_CT_ICON_DIR" ]]; then
+        for f in "${_CT_ICON_DIR}"/*.png(N); do
+            local name="${f:t:r}"
+            [[ "$name" == (box|li|web|infra|brane|sales|content) ]] && continue
+            tasks+=("$name")
+        done
+    fi
+    _describe 'task' tasks
+}
+compdef _ct_complete ct 2>/dev/null
