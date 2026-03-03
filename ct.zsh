@@ -12,7 +12,9 @@
 _CT_DIR="${CT_DIR:-$HOME/.ct}"
 _CT_ICON_DIR="${_CT_DIR}/icons"
 _CT_CURRENT=""
-_CT_START=0
+_CT_ACTIVE=0           # accumulated active seconds
+_CT_LAST_PROMPT=0      # timestamp of last prompt
+_CT_IDLE=${CT_IDLE:-600}  # seconds before a gap counts as idle (default: 10 min)
 
 zmodload zsh/datetime 2>/dev/null  # for EPOCHSECONDS
 
@@ -68,7 +70,13 @@ _ct_slug() {
     echo "${1//[^a-zA-Z0-9_-]/-}" | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g;s/^-//;s/-$//'
 }
 
-# ─── Timer helpers ───────────────────────────────────────────────
+# ─── Timer (smart: only counts active time between prompts) ──────
+#
+# How it works:
+# - Every prompt (precmd), we check the gap since last prompt
+# - Gap < CT_IDLE (default 10 min) → active time, add to counter
+# - Gap >= CT_IDLE → you were away (sleep, meeting, other window), skip
+# - Result: only real focus time is counted
 
 _ct_now() {
     if (( ${+EPOCHSECONDS} )); then
@@ -91,11 +99,23 @@ _ct_fmt_duration() {
     fi
 }
 
-_ct_elapsed() {
-    [[ "$_CT_START" -eq 0 ]] && echo "" && return
+_ct_tick() {
+    # Called every precmd — accumulates active time
+    [[ -z "$_CT_CURRENT" ]] && return
     local now="$(_ct_now)"
-    local secs=$(( now - _CT_START ))
-    _ct_fmt_duration "$secs"
+    if (( _CT_LAST_PROMPT > 0 )); then
+        local gap=$(( now - _CT_LAST_PROMPT ))
+        if (( gap > 0 && gap < _CT_IDLE )); then
+            (( _CT_ACTIVE += gap ))
+        fi
+    fi
+    _CT_LAST_PROMPT=$now
+}
+
+_ct_active_time() {
+    # Returns formatted active time
+    (( _CT_ACTIVE > 0 )) || { echo "<1m"; return; }
+    _ct_fmt_duration "$_CT_ACTIVE"
 }
 
 # ─── Task log ────────────────────────────────────────────────────
@@ -108,8 +128,9 @@ _ct_log_entry() {
 }
 
 _ct_log_end_current() {
-    [[ -z "$_CT_CURRENT" || "$_CT_START" -eq 0 ]] && return
-    local elapsed="$(_ct_elapsed)"
+    [[ -z "$_CT_CURRENT" ]] && return
+    _ct_tick  # capture final gap
+    local elapsed="$(_ct_active_time)"
     _ct_log_entry "end" "$_CT_CURRENT" "$elapsed"
 }
 
@@ -154,6 +175,9 @@ _ct_title() {
 _ct_precmd() {
     [[ -z "$_CT_CURRENT" ]] && return
 
+    # Tick the timer (smart: skips idle gaps)
+    _ct_tick
+
     local badge="$_CT_CURRENT"
 
     # Git branch
@@ -161,25 +185,19 @@ _ct_precmd() {
     branch="$(git branch --show-current 2>/dev/null)"
     [[ -n "$branch" ]] && badge+=$'\n'"$branch"
 
-    # Short path
+    # Short path (last 2 components)
     local short_path="${PWD/#$HOME/~}"
-    # Truncate to last 2 components if long
     if [[ "$short_path" == */*/* ]]; then
-        short_path="…/${${short_path}##*/}"
         local parent="${${PWD:h}:t}"
         short_path="…/${parent}/${PWD:t}"
     fi
     badge+=$'\n'"$short_path"
 
-    # Timer
-    if [[ "$_CT_START" -gt 0 ]]; then
-        local elapsed="$(_ct_elapsed)"
-        [[ -n "$elapsed" ]] && badge+=$'\n'"$elapsed"
-    fi
+    # Active time
+    local active="$(_ct_active_time)"
+    badge+=$'\n'"$active"
 
     _ct_badge "$badge"
-
-    # Also keep title fresh
     _ct_title "◈ $_CT_CURRENT"
 }
 
@@ -314,14 +332,15 @@ ct() {
     # No args — show current task + context
     if [[ -z "$1" ]]; then
         if [[ -n "$_CT_CURRENT" ]]; then
-            local elapsed="$(_ct_elapsed)"
+            _ct_tick
+            local active="$(_ct_active_time)"
             local branch="$(git branch --show-current 2>/dev/null)"
             local short_path="${PWD/#$HOME/~}"
             echo ""
             echo -e "  \033[1;37m◈ $_CT_CURRENT\033[0m"
             [[ -n "$branch" ]] && echo -e "  \033[34m$branch\033[0m"
             echo -e "  \033[2m$short_path\033[0m"
-            [[ -n "$elapsed" ]] && echo -e "  \033[33m$elapsed\033[0m"
+            echo -e "  \033[33m$active active\033[0m"
             echo ""
         else
             echo ""
@@ -387,10 +406,11 @@ ct() {
             fi
         done
         # Show current if active
-        if [[ -n "$_CT_CURRENT" && "$_CT_START" -gt 0 ]]; then
-            local elapsed="$(_ct_elapsed)"
+        if [[ -n "$_CT_CURRENT" ]]; then
+            _ct_tick
+            local active="$(_ct_active_time)"
             echo ""
-            echo -e "  \033[33m●\033[0m now       \033[1m$_CT_CURRENT\033[0m  ($elapsed, running)"
+            echo -e "  \033[33m●\033[0m now       \033[1m$_CT_CURRENT\033[0m  ($active active)"
         fi
         echo ""
         return 0
@@ -404,7 +424,8 @@ ct() {
         _ct_bg_image ""
         _ct_title "Terminal"
         _CT_CURRENT=""
-        _CT_START=0
+        _CT_ACTIVE=0
+        _CT_LAST_PROMPT=0
         echo -e "\n  \033[2mReset.\033[0m\n"
         return 0
     fi
@@ -443,7 +464,8 @@ ct() {
 
     _ct_title "◈ $label"
     _CT_CURRENT="$label"
-    _CT_START="$(_ct_now)"
+    _CT_ACTIVE=0
+    _CT_LAST_PROMPT="$(_ct_now)"
 
     # Log start
     _ct_log_entry "start" "$label" ""
