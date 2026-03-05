@@ -91,10 +91,6 @@ PYEOF
 
 # ─── Timer (smart: only counts active time between prompts) ──────
 
-_ct_now() {
-    (( ${+EPOCHSECONDS} )) && echo "$EPOCHSECONDS" || date +%s
-}
-
 _ct_fmt_duration() {
     local secs="${1:-0}" hrs mins
     hrs=$(( secs / 3600 ))
@@ -107,7 +103,12 @@ _ct_fmt_duration() {
 
 _ct_tick() {
     [[ -z "$_CT_CURRENT" ]] && return
-    local now="$(_ct_now)"
+    local now
+    if (( ${+EPOCHSECONDS} )); then
+        now=$EPOCHSECONDS
+    else
+        now=$(date +%s)
+    fi
     if (( _CT_LAST_PROMPT > 0 )); then
         local gap=$(( now - _CT_LAST_PROMPT ))
         (( gap > 0 && gap < _CT_IDLE )) && (( _CT_ACTIVE += gap ))
@@ -175,9 +176,8 @@ _ct_precmd() {
     [[ -z "$_CT_CURRENT" ]] && return
     _ct_tick
 
-    local badge="$_CT_CURRENT"
-    local branch="$(git branch --show-current 2>/dev/null)"
-    [[ -n "$branch" ]] && badge+=$'\n'"$branch"
+    local badge="${(U)_CT_CURRENT}"
+    badge+=$'\n'
 
     local short_path="${PWD/#$HOME/~}"
     if [[ "$short_path" == */*/* ]]; then
@@ -508,7 +508,7 @@ HELPEOF
        [[ "$_CT_CURRENT" == "$1" ]]
     }; then
         _CT_ACTIVE=0
-        _CT_LAST_PROMPT="$(_ct_now)"
+        if (( ${+EPOCHSECONDS} )); then _CT_LAST_PROMPT=$EPOCHSECONDS; else _CT_LAST_PROMPT=$(date +%s); fi
         echo -e "\n  \033[1;37m◈ $_CT_CURRENT\033[0m  (timer reset)\n"
         return 0
     fi
@@ -547,7 +547,7 @@ HELPEOF
     _ct_title "◈ $label"
     _CT_CURRENT="$label"
     _CT_ACTIVE=0
-    _CT_LAST_PROMPT="$(_ct_now)"
+    if (( ${+EPOCHSECONDS} )); then _CT_LAST_PROMPT=$EPOCHSECONDS; else _CT_LAST_PROMPT=$(date +%s); fi
     _ct_log_entry "start" "$label" ""
 
     echo ""
