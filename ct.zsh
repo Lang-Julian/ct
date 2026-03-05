@@ -101,7 +101,8 @@ _ct_fmt_duration() {
     mins=$(( (secs % 3600) / 60 ))
     if (( hrs > 0 )); then echo "${hrs}h ${mins}m"
     elif (( mins > 0 )); then echo "${mins}m"
-    else echo "<1m"; fi
+    elif (( secs > 0 )); then echo "${secs}s"
+    else echo "0s"; fi
 }
 
 _ct_tick() {
@@ -115,7 +116,7 @@ _ct_tick() {
 }
 
 _ct_active_time() {
-    (( _CT_ACTIVE > 0 )) || { echo "<1m"; return; }
+    (( _CT_ACTIVE > 0 )) || { echo "0s"; return; }
     _ct_fmt_duration "$_CT_ACTIVE"
 }
 
@@ -224,7 +225,7 @@ import sys, hashlib, colorsys, os
 from PIL import Image, ImageDraw, ImageFont
 name, out = sys.argv[1], sys.argv[2]
 os.makedirs(os.path.dirname(out), exist_ok=True)
-W, H, A = 1000, 800, 38
+W, H, A = 1000, 800, 65
 h = int(hashlib.sha256(name.encode()).hexdigest()[:8], 16)
 r, g, b = colorsys.hls_to_rgb((h % 360) / 360, 0.5, 0.7)
 c = (int(r*255), int(g*255), int(b*255), A)
@@ -321,9 +322,10 @@ ct() {
             local branch="$(git branch --show-current 2>/dev/null)"
             echo ""
             echo -e "  \033[1;37m◈ $_CT_CURRENT\033[0m"
-            [[ -n "$branch" ]] && echo -e "  \033[34m$branch\033[0m"
-            echo -e "  \033[2m${PWD/#$HOME/~}\033[0m"
-            echo -e "  \033[33m$(_ct_active_time) active\033[0m"
+            echo ""
+            [[ -n "$branch" ]] && echo -e "  \033[34m  $branch\033[0m"
+            echo -e "  \033[2m  ${PWD/#$HOME/~}\033[0m"
+            echo -e "  \033[33m  $(_ct_active_time) active\033[0m"
             echo ""
         else
             echo ""

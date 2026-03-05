@@ -21,7 +21,7 @@ except ImportError:
     sys.exit(1)
 
 W, H = 1000, 800
-ALPHA = 38
+ALPHA = 65
 
 # ─── Font handling ───────────────────────────────────────────────
 
