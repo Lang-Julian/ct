@@ -147,6 +147,60 @@ The badge updates on every prompt — automatically reflects directory changes a
 
 Core features (timer, task tracking, log, title) work in **any** terminal. Visual features use iTerm2/WezTerm proprietary escape sequences.
 
+## Integrations
+
+`ct` exposes task context for other tools — AI assistants, scripts, status bars, anything.
+
+### Environment variables
+
+Every `ct` call exports these in the current shell:
+
+```bash
+echo $CT_TASK        # "Deploy"
+echo $CT_TASK_KEY    # "deploy"
+```
+
+### Context file
+
+`~/.ct/context` is written on every task change (key=value, one per line):
+
+```
+task=Deploy
+key=deploy
+dir=/Users/you/my-project
+pid=12345
+```
+
+### Machine-readable output
+
+```bash
+ct context           # prints key=value pairs to stdout
+```
+
+### Example: Claude Code integration
+
+Add a [SessionStart hook](https://docs.anthropic.com/en/docs/claude-code/hooks) that injects `ct` context into every Claude Code session:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{
+      "type": "command",
+      "command": "if [ -f ~/.ct/context ]; then echo '## Active Task (ct)' >> ~/.claude/context-briefing.md && cat ~/.ct/context >> ~/.claude/context-briefing.md; fi"
+    }]
+  }
+}
+```
+
+Now when you tag a terminal with `ct deploy` and start Claude Code, the AI knows you're working on deployment.
+
+### Example: tmux status bar
+
+```bash
+# In .tmux.conf — show current ct task in status bar
+set -g status-right '#(cat ~/.ct/context 2>/dev/null | grep "^task=" | cut -d= -f2)'
+```
+
 ## Configuration
 
 ### Custom tasks with fixed colors
@@ -171,7 +225,7 @@ If the background watermark is too subtle or too strong:
 ## Architecture
 
 ```
-ct.zsh         ~580 lines    Shell integration, timer, badge, CLI
+ct.zsh         ~600 lines    Shell integration, timer, badge, context export, CLI
 gen-icons.py   ~560 lines    Icon generation (Pillow), semantic matching
 install.sh      ~80 lines    One-command setup
 ```

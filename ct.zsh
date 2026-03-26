@@ -48,7 +48,7 @@ _CT_TASKS=(
 
 # ─── Reserved subcommands (not valid task names) ────────────────
 
-_CT_RESERVED=(help -h --help version clear reset list ls log delete rm)
+_CT_RESERVED=(help -h --help version clear reset list ls log delete rm context)
 
 # ─── Parse task definition ──────────────────────────────────────
 
@@ -131,6 +131,20 @@ _ct_log_end_current() {
     [[ -z "$_CT_CURRENT" ]] && return
     _ct_tick
     _ct_log_entry "end" "$_CT_CURRENT" "$(_ct_active_time)"
+}
+
+# ─── Context export (for AI tools, scripts, integrations) ──────
+
+_ct_export_context() {
+    export CT_TASK="$1"
+    export CT_TASK_KEY="$2"
+    mkdir -p "$_CT_DIR"
+    printf '%s\n' "task=$1" "key=$2" "dir=$PWD" "pid=$$" > "${_CT_DIR}/context"
+}
+
+_ct_clear_context() {
+    unset CT_TASK CT_TASK_KEY 2>/dev/null
+    rm -f "${_CT_DIR}/context"
 }
 
 # ─── iTerm2 / WezTerm escape sequences ──────────────────────────
@@ -353,6 +367,7 @@ ct() {
     ct delete <name>    Delete a cached custom icon
     ct log [N]          Task history (last N entries, default 20)
     ct log clear        Clear history
+    ct context          Machine-readable task info (for scripts/AI tools)
     ct help             This help
     ct version          Version
 
@@ -369,6 +384,11 @@ ct() {
 
   BADGE (iTerm2 / WezTerm)
     Updates every prompt:  task · path · active time
+
+  INTEGRATIONS
+    Exports \$CT_TASK and \$CT_TASK_KEY environment variables.
+    Writes ~/.ct/context (key=value) for cross-process tools.
+    "ct context" outputs machine-readable task info.
 
   CONFIG
     ~/.ct/config.zsh — add custom tasks with fixed colors:
@@ -483,6 +503,15 @@ HELPEOF
         return 0
     fi
 
+    # ── Context (machine-readable output for AI tools / scripts)
+    if [[ "$task" == "context" ]]; then
+        if [[ -n "$_CT_CURRENT" ]]; then
+            _ct_tick
+            printf '%s\n' "task=$_CT_CURRENT" "key=${CT_TASK_KEY:-}" "dir=$PWD" "active=$(_ct_active_time)" "pid=$$"
+        fi
+        return 0
+    fi
+
     # ── Clear / Reset
     if [[ "$task" == "clear" || "$task" == "reset" ]]; then
         if [[ -n "$_CT_CURRENT" ]]; then
@@ -492,6 +521,7 @@ HELPEOF
         _ct_tab_color_reset
         _ct_bg_image ""
         _ct_title "Terminal"
+        _ct_clear_context
         _CT_CURRENT=""
         _CT_ACTIVE=0
         _CT_LAST_PROMPT=0
@@ -549,6 +579,7 @@ HELPEOF
     _CT_ACTIVE=0
     if (( ${+EPOCHSECONDS} )); then _CT_LAST_PROMPT=$EPOCHSECONDS; else _CT_LAST_PROMPT=$(date +%s); fi
     _ct_log_entry "start" "$label" ""
+    _ct_export_context "$label" "$task"
 
     echo ""
     echo -e "  \033[1;37m◈ $label\033[0m"
@@ -562,7 +593,7 @@ _ct_complete() {
     # All keys from _CT_TASKS
     tasks=(${(k)_CT_TASKS})
     # Subcommands
-    tasks+=(clear reset list log help version delete)
+    tasks+=(clear reset list log help version delete context)
     # Cached custom icons
     if [[ -d "$_CT_ICON_DIR" ]]; then
         local f name
