@@ -81,32 +81,39 @@ def _hash_color(name):
 
 # ─── Pre-built icons ────────────────────────────────────────────
 
-def gen_box():
-    img, d = _img(), None
+def gen_deploy():
+    img = _img()
     d = ImageDraw.Draw(img)
-    c = _rgba(30, 100, 220)
-    cx, cy, s = W // 2, H // 2 - 30, 140
-    off = s // 2
-    d.polygon([(cx-s,cy-s//3),(cx+s,cy-s//3),(cx+s,cy+s),(cx-s,cy+s)], outline=c, width=5)
-    d.polygon([(cx-s,cy-s//3),(cx-s+off,cy-s),(cx+s+off,cy-s),(cx+s,cy-s//3)], outline=c, width=5)
-    d.polygon([(cx+s,cy-s//3),(cx+s+off,cy-s),(cx+s+off,cy+s-s//3),(cx+s,cy+s)], outline=c, width=5)
-    d.polygon([(cx,cy+s//4-25),(cx+25,cy+s//4),(cx,cy+s//4+25),(cx-25,cy+s//4)], fill=c)
-    _center_text(d, "AI IN THE BOX", cy + s + 50, c, 48)
+    c = _rgba(220, 60, 60)
+    cx, cy = W // 2, H // 2 - 30
+    # Nose cone
+    d.polygon([(cx, cy - 180), (cx - 55, cy - 60), (cx + 55, cy - 60)], outline=c, width=4)
+    # Body
+    d.rectangle([cx - 55, cy - 60, cx + 55, cy + 80], outline=c, width=4)
+    # Window
+    d.ellipse([cx - 25, cy - 40, cx + 25, cy + 10], outline=c, width=3)
+    # Fins
+    d.polygon([(cx - 55, cy + 20), (cx - 100, cy + 100), (cx - 55, cy + 80)], outline=c, width=4)
+    d.polygon([(cx + 55, cy + 20), (cx + 100, cy + 100), (cx + 55, cy + 80)], outline=c, width=4)
+    # Flame
+    d.polygon([(cx - 30, cy + 80), (cx, cy + 150), (cx + 30, cy + 80)], fill=c)
+    _center_text(d, "DEPLOY", cy + 200, c, 48)
     return img
 
 
-def gen_li():
-    img, d = _img(), None
+def gen_api():
+    img = _img()
     d = ImageDraw.Draw(img)
-    c = _rgba(0, 119, 181)
-    cx, cy, bw, bh = W//2, H//2-20, 200, 220
-    d.rounded_rectangle([cx-bw,cy-bh,cx+bw,cy+bh], radius=30, outline=c, width=4)
-    d.ellipse([cx-120,cy-160,cx-70,cy-120], fill=c)
-    d.rectangle([cx-120,cy-90,cx-70,cy+100], fill=c)
-    d.rectangle([cx-20,cy-90,cx+30,cy+100], fill=c)
-    d.arc([cx-20,cy-130,cx+130,cy], start=180, end=0, fill=c, width=50)
-    d.rectangle([cx+80,cy-65,cx+130,cy+100], fill=c)
-    _center_text(d, "LINKEDIN", cy + bh + 40, c, 48)
+    c = _rgba(30, 100, 220)
+    cx, cy = W // 2, H // 2 - 20
+    nodes = [(cx, cy - 150), (cx - 145, cy - 45), (cx + 145, cy - 45),
+             (cx - 90, cy + 125), (cx + 90, cy + 125)]
+    for i, a in enumerate(nodes):
+        for b in nodes[i + 1:]:
+            d.line([a, b], fill=c, width=3)
+    for x, y in nodes:
+        d.ellipse([x - 22, y - 22, x + 22, y + 22], fill=c)
+    _center_text(d, "API", cy + 200, c, 48)
     return img
 
 
@@ -150,59 +157,60 @@ def gen_infra():
     return img
 
 
-def gen_brane():
-    img, d = _img(), None
+def gen_security():
+    img = _img()
     d = ImageDraw.Draw(img)
     c = _rgba(200, 40, 70)
-    cx, cy = W//2, H//2-20
-    outer = [(cx,cy-200),(cx+170,cy-130),(cx+170,cy+20),(cx+100,cy+120),
-             (cx,cy+190),(cx-100,cy+120),(cx-170,cy+20),(cx-170,cy-130)]
-    inner = [(cx,cy-150),(cx+120,cy-95),(cx+120,cy+15),(cx+70,cy+90),
-             (cx,cy+140),(cx-70,cy+90),(cx-120,cy+15),(cx-120,cy-95)]
-    d.polygon(outer, outline=c, width=5)
-    d.polygon(inner, outline=c, width=3)
-    d.ellipse([cx-30,cy-55,cx+30,cy+5], outline=c, width=4)
-    d.polygon([(cx-18,cy+5),(cx+18,cy+5),(cx+8,cy+65),(cx-8,cy+65)], fill=c)
-    _center_text(d, "BRANE AIF", cy + 220, c, 48)
+    cx, cy = W // 2, H // 2 - 20
+    # Shield outline
+    d.polygon([(cx, cy - 200), (cx + 150, cy - 120), (cx + 150, cy + 30),
+               (cx, cy + 180), (cx - 150, cy + 30), (cx - 150, cy - 120)], outline=c, width=5)
+    # Inner shield
+    d.polygon([(cx, cy - 140), (cx + 100, cy - 80), (cx + 100, cy + 20),
+               (cx, cy + 120), (cx - 100, cy + 20), (cx - 100, cy - 80)], outline=c, width=3)
+    # Lock keyhole
+    d.ellipse([cx - 30, cy - 55, cx + 30, cy + 5], outline=c, width=4)
+    d.polygon([(cx - 12, cy + 5), (cx + 12, cy + 5), (cx + 6, cy + 55), (cx - 6, cy + 55)], fill=c)
+    _center_text(d, "SECURITY", cy + 210, c, 48)
     return img
 
 
-def gen_sales():
-    img, d = _img(), None
+def gen_data():
+    img = _img()
     d = ImageDraw.Draw(img)
     c = _rgba(240, 130, 20)
-    cx, cy, bw, gap = W//2, H//2, 50, 20
+    cx, cy, bw, gap = W // 2, H // 2, 50, 20
     base_y = cy + 130
     bars = [80, 130, 100, 180, 150, 250, 220, 300]
     total = len(bars) * (bw + gap)
-    ax_l, ax_r = cx - total//2 - 20, cx + total//2 + 20
-    d.line([ax_l,base_y,ax_r,base_y], fill=c, width=4)
-    d.line([ax_l,base_y,ax_l,base_y-350], fill=c, width=4)
-    d.polygon([(ax_l-10,base_y-340),(ax_l,base_y-360),(ax_l+10,base_y-340)], fill=c)
-    sx, pts = cx - total//2, []
+    ax_l, ax_r = cx - total // 2 - 20, cx + total // 2 + 20
+    d.line([ax_l, base_y, ax_r, base_y], fill=c, width=4)
+    d.line([ax_l, base_y, ax_l, base_y - 350], fill=c, width=4)
+    d.polygon([(ax_l - 10, base_y - 340), (ax_l, base_y - 360), (ax_l + 10, base_y - 340)], fill=c)
+    sx, pts = cx - total // 2, []
     for i, h in enumerate(bars):
         x = sx + i * (bw + gap)
-        d.rectangle([x,base_y-h,x+bw,base_y], fill=c)
-        pts.append((x + bw//2, base_y - h - 15))
+        d.rectangle([x, base_y - h, x + bw, base_y], fill=c)
+        pts.append((x + bw // 2, base_y - h - 15))
     d.line(pts, fill=_rgba(240, 130, 20, ALPHA + 15), width=4)
-    _center_text(d, "SALES", base_y + 40, c, 48)
+    _center_text(d, "DATA", base_y + 40, c, 48)
     return img
 
 
-def gen_content():
-    img, d = _img(), None
+def gen_docs():
+    img = _img()
     d = ImageDraw.Draw(img)
     c = _rgba(140, 60, 200)
-    cx, cy = W//2, H//2-20
-    pl, pt, pr, pb, fold = cx-160, cy-200, cx+160, cy+200, 50
-    d.polygon([(pl,pt),(pr-fold,pt),(pr,pt+fold),(pr,pb),(pl,pb)], outline=c, width=4)
-    d.line([(pr-fold,pt),(pr-fold,pt+fold),(pr,pt+fold)], fill=c, width=3)
+    cx, cy = W // 2, H // 2 - 20
+    pl, pt, pr, pb, fold = cx - 160, cy - 200, cx + 160, cy + 200, 50
+    d.polygon([(pl, pt), (pr - fold, pt), (pr, pt + fold), (pr, pb), (pl, pb)], outline=c, width=4)
+    d.line([(pr - fold, pt), (pr - fold, pt + fold), (pr, pt + fold)], fill=c, width=3)
     for i in range(7):
         y = pt + 80 + i * 45
-        d.line([cx-110, y, cx-110 + (220 if i%3!=2 else 150), y], fill=c, width=6)
-    d.line([pr+30,pb-30,pr+80,pb-110], fill=c, width=6)
-    d.polygon([(pr+27,pb-25),(pr+33,pb-25),(pr+30,pb-10)], fill=c)
-    _center_text(d, "CONTENT", pb + 30, c, 48)
+        d.line([cx - 110, y, cx - 110 + (220 if i % 3 != 2 else 150), y], fill=c, width=6)
+    d.line([pr + 30, pb - 30, pr + 80, pb - 110], fill=c, width=6)
+    d.polygon([(pr + 27, pb - 25), (pr + 33, pb - 25), (pr + 30, pb - 10)], fill=c)
+    _center_text(d, "DOCS", pb + 30, c, 48)
     return img
 
 
@@ -526,8 +534,8 @@ def gen_custom(task_name):
 # ─── Registry + entry points ────────────────────────────────────
 
 PREBUILT = {
-    "box": gen_box, "li": gen_li, "web": gen_web, "infra": gen_infra,
-    "brane": gen_brane, "sales": gen_sales, "content": gen_content,
+    "deploy": gen_deploy, "api": gen_api, "web": gen_web, "infra": gen_infra,
+    "security": gen_security, "data": gen_data, "docs": gen_docs,
 }
 
 

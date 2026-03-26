@@ -31,16 +31,15 @@ zmodload zsh/datetime 2>/dev/null
 
 typeset -gA _CT_TASKS
 _CT_TASKS=(
-    box       "AI in the Box;30;100;220;box"
-    aitb      "AI in the Box;30;100;220;box"
-    li        "LinkedIn;0;119;181;li"
-    linkedin  "LinkedIn;0;119;181;li"
-    web       "Website;40;180;70;web"
-    site      "Website;40;180;70;web"
+    deploy    "Deploy;220;60;60;deploy"
+    api       "API;30;100;220;api"
+    web       "Frontend;40;180;70;web"
+    site      "Frontend;40;180;70;web"
+    frontend  "Frontend;40;180;70;web"
     infra     "Infrastructure;220;170;30;infra"
-    brane     "Brane AIF;200;40;70;brane"
-    sales     "Sales;240;130;20;sales"
-    content   "Content;140;60;200;content"
+    security  "Security;200;40;70;security"
+    data      "Data;240;130;20;data"
+    docs      "Docs;140;60;200;docs"
 )
 
 # ─── Load user config (optional) ────────────────────────────────
@@ -251,23 +250,23 @@ PYEOF
 _ct_ascii() {
     local task="$1" label="$2" r="\033[0m"
     case "$task" in
-        box|aitb) echo -e "\033[1;34m
-        ╭───────────────╮
-       ╱│              ╱│
-      ╱ │   ◈  A I   ╱ │
-     ╭───────────────╮  │
-     │  │   I N      │  │
-     │  ╰────────────│──╯
-     │ ╱    B O X    │ ╱
-     ╰───────────────╯${r}" ;;
-        li|linkedin) echo -e "\033[1;36m
-     ╔═══════════════╗
-     ║  ██           ║
-     ║  ██  ███████  ║
-     ║  ██  ██   ██  ║
-     ║  ██  ██   ██  ║
-     ╚═══════════════╝${r}" ;;
-        web|site) echo -e "\033[1;32m
+        deploy) echo -e "\033[1;31m
+           ╱╲
+          ╱  ╲
+         │ ◈◈ │
+         │    │
+        ╱└────┘╲
+       ╱   ▓▓   ╲
+     D E P L O Y${r}" ;;
+        api) echo -e "\033[1;34m
+          ●
+         ╱│╲
+        ╱ │ ╲
+       ●──●──●
+        ╲ │ ╱
+         ╲│╱
+          ●${r}" ;;
+        web|site|frontend) echo -e "\033[1;32m
      ┌── ● ● ● ──────────┐
      │  ┌──────────────┐  │
      │  │   ╱──●──╲    │  │
@@ -284,21 +283,22 @@ _ct_ascii() {
      │ ▪▪▪ ═══════  ◉ ◉ │
      └────────┬──────────┘
         ══════╧══════${r}" ;;
-        brane) echo -e "\033[1;31m
-          ╱╲
-         ╱╱╲╲
-        ╱╱◈◈╲╲
-       ╱╱ AIF ╲╲
-       ╲╲─────╱╱
-        ╲─────╱${r}" ;;
-        sales) echo -e "\033[38;5;208m
+        security) echo -e "\033[1;31m
+         ╱────╲
+        ╱╱    ╲╲
+       ╱╱  ◈◈  ╲╲
+       ║   ██   ║
+       ╲╲  ▼▼  ╱╱
+        ╲╲    ╱╱
+         ╲────╱${r}" ;;
+        data) echo -e "\033[38;5;208m
               ┃
            ┃  ┃
         ┃  ┃  ┃  ┃
      ┃  ┃  ┃  ┃  ┃
      ┻──┻──┻──┻──┻──
-      S A L E S  ▲${r}" ;;
-        content) echo -e "\033[1;35m
+       D A T A   ▲${r}" ;;
+        docs) echo -e "\033[1;35m
      ┌──────────────────┐
      │ ≡≡≡≡≡≡≡≡≡≡≡≡≡≡ │
      │ ≡≡≡≡≡≡≡≡≡≡     │

@@ -2,14 +2,15 @@
 
 **Tag terminals, not tabs.**
 
-You have 5 terminals open. You switch to one. Which project was this?
-`ct` solves this in one command — a persistent visual tag that stays visible while you scroll, work, and forget.
+You have 6 terminals open. You switch to one. Which project was this again?
+
+`ct` solves this in one command — a persistent visual watermark that stays visible while you scroll, type, and forget which terminal is which.
 
 ```
 ct deploy
 ```
 
-That's it. A rocket icon appears as a watermark in your terminal background. The tab turns colored. A badge shows your task, directory, and how long you've been focused. All persistent. All automatic.
+A rocket icon fades into your terminal background. The tab turns red. A badge tracks your task name, directory, and active focus time. All persistent. All automatic.
 
 ---
 
@@ -39,122 +40,115 @@ That's it. A rocket icon appears as a watermark in your terminal background. The
 └─────────────────────────────────────────────────┘
 ```
 
-Three layers, all persistent:
+Three visual layers, all persistent:
 
-| Layer | Survives scrolling | Where | Terminal support |
-|-------|-------------------|-------|-----------------|
-| **Background image** | Yes | Terminal pane | iTerm2, WezTerm |
-| **Badge** | Yes | Semi-transparent overlay | iTerm2, WezTerm |
-| **Tab color + title** | Yes | Tab bar | iTerm2, WezTerm |
-| **ASCII art** | No (one-time) | Terminal output | Any terminal |
+| Layer | Survives scrolling | Where | Requires |
+|-------|-------------------|-------|----------|
+| **Background image** | Yes | Terminal pane | iTerm2 or WezTerm |
+| **Badge** | Yes | Semi-transparent overlay | iTerm2 or WezTerm |
+| **Tab color** | Yes | Tab bar | iTerm2 or WezTerm |
 | **Terminal title** | Yes | Title bar / tab | Any terminal |
+| **ASCII art** | No (one-time) | Terminal output | Any terminal |
+
+> **Note:** Full visual features (background, badge, tab color) require [iTerm2](https://iterm2.com/) or [WezTerm](https://wezfurlong.org/wezterm/). Other terminals get the title, timer, task log, and ASCII art fallback.
 
 ## Install
 
 ```bash
 git clone https://github.com/Lang-Julian/ct.git
-cd ct
-./install.sh
+cd ct && ./install.sh
 ```
 
-Requirements: **zsh** + **Python 3** + **Pillow** (`pip install Pillow`)
+**Requirements:** zsh, Python 3, [Pillow](https://pypi.org/project/Pillow/) (`pip install Pillow`)
 
-Without Pillow, badge + tab color + ASCII art still work — just no background images.
+Without Pillow everything still works — just no background images.
 
-## Quick start
+## Usage
 
 ```bash
-source ~/.ct/ct.zsh    # activate (auto-loaded on next shell start)
-
 ct deploy              # tag this terminal
-ct                     # show current task + branch + path + timer
+ct                     # show current task + git branch + path + timer
 ct clear               # reset everything
+ct list                # show all tasks (pre-built + cached custom)
+ct delete <name>       # remove a cached icon
+ct log                 # task history with durations
+ct log 50              # last 50 entries
+ct log clear           # clear history
+ct help                # full reference
 ```
-
-## Commands
-
-| Command | What it does |
-|---------|-------------|
-| `ct <name>` | Tag terminal — any name works, icon auto-generated |
-| `ct` | Show current task, git branch, path, active time |
-| `ct clear` | Reset (remove background, badge, tab color) |
-| `ct list` | Show all tasks (pre-built + cached custom) |
-| `ct delete <name>` | Delete a cached custom icon |
-| `ct log` | Task history with durations |
-| `ct log 50` | Last 50 log entries |
-| `ct log clear` | Clear history |
-| `ct help` | Full help |
-| `ct version` | Version |
 
 ## Smart icons
 
-### Pre-built (hand-crafted)
+Any name works. `ct` generates an icon automatically on first use and caches it.
 
-```
-ct box          3D cube             (blue)
-ct li           LinkedIn "in" logo  (cyan)
-ct web          Browser + globe     (green)
-ct infra        Server rack         (yellow)
-ct brane        Shield + lock       (red)
-ct sales        Bar chart           (orange)
-ct content      Document + pen      (purple)
-```
+### Semantic matching
 
-Aliases: `aitb` → box, `linkedin` → li, `site` → web
-
-### Custom — semantic matching
-
-`ct` recognizes what your task is about and picks a matching icon:
+Your task name is analyzed against **160+ keywords** mapped to **25 icon shapes**:
 
 ```
 ct deploy       → 🚀 rocket
 ct fix-login    → 🐛 bug
-ct docker-setup → 🐋 container + whale
+ct docker-setup → 🐋 container
 ct api-review   → 🔗 connected nodes
-ct meeting-prep → 📞 headset
 ct db-migration → 🗄️  database cylinder
 ct auth-flow    → 🔒 padlock
-ct git-rebase   → 🌿 branch
 ct k8s-debug    → 🐋 container
 ct perf-audit   → ⚡ lightning bolt
 ct email-thing  → ✉️  envelope
+ct git-rebase   → 🌿 branch
 ```
 
-**160+ keywords** mapped to **25 icon shapes** — deploy, debug, database, api, test, build, design, email, chat, security, cloud, docker, git, monitor, docs, meeting, search, finance, network, and more.
-
-No match? Falls back to a unique geometric shape with hash-based color. Same name → same visual, always.
-
-### How matching works
+Three-pass matching:
 
 ```
 ct "deploy-to-prod"
      ↓
   Split: ["deploy", "to", "prod"]
      ↓
-  Pass 1: exact word match → "deploy" → 🚀 rocket
+  Pass 1: exact word match     → "deploy" hits → 🚀
+  Pass 2: substring match      → "deploying" contains "deploy"
+  Pass 3: joined-string match  → "mydb" contains "db"
      ↓
-  Done. (also tries substring + joined-string matching as fallback)
+  No match? → deterministic geometric shape (SHA-256 hash → color + shape)
 ```
+
+Same name always produces the same icon. Deterministic, no randomness.
+
+### Pre-built (hand-crafted)
+
+Seven tasks ship with high-quality hand-crafted icons:
+
+```
+ct deploy       Rocket              (red)
+ct api          Connected nodes     (blue)
+ct web          Browser + globe     (green)
+ct infra        Server rack         (yellow)
+ct security     Shield              (crimson)
+ct data         Bar chart           (orange)
+ct docs         Document + pen      (purple)
+```
+
+Aliases: `site` and `frontend` → web
 
 ## Smart timer
 
-The timer only counts **active focus time**, not wall clock time.
+The timer only counts **active focus time** — not wall clock time.
 
 ```
-22:00  ct box              timer starts
-22:05  git push            +5m (gap 5m < 10m → active)
-22:05  ... sleep ...
-10:00  ls                  +0m (gap 12h > 10m → idle, skipped)
-10:03  npm test            +3m (gap 3m < 10m → active)
+22:00  ct deploy            timer starts
+22:05  git push             +5m  (5m gap < 10m threshold → counted)
+22:05  ... go to sleep ...
+10:00  ls                   +0m  (12h gap > 10m threshold → skipped)
+10:03  npm test             +3m  (3m gap → counted)
 
-ct                         shows: 8m active (not 12h)
+ct                          shows: 8m active (not 12h 3m)
 ```
 
-The threshold is configurable:
+The timer ticks on each shell prompt. If the gap between two prompts exceeds the idle threshold, that gap is not counted — you were away.
 
 ```bash
 export CT_IDLE=300    # 5 min (stricter)
-export CT_IDLE=900    # 15 min (more relaxed)
+export CT_IDLE=900    # 15 min (relaxed)
 # default: 600 (10 min)
 ```
 
@@ -164,14 +158,14 @@ In iTerm2/WezTerm, the badge updates on every prompt:
 
 ```
 ┌─────────────────┐
-│  AI IN THE BOX  │  ← task
+│     DEPLOY      │  ← task (uppercased)
 │                 │
-│  …/ai-in-the-box│ ← directory
+│  …/my-project   │  ← current directory
 │  47m            │  ← active focus time
 └─────────────────┘
 ```
 
-Automatically reflects directory changes. No manual refresh needed.
+Automatically reflects directory changes as you `cd` around. No manual refresh needed.
 
 ## Configuration
 
@@ -190,35 +184,41 @@ Format: `key "Label;R;G;B;icon_file"`
 
 See [`config.example.zsh`](config.example.zsh) for a template.
 
-### iTerm2 background blending
+### Background blending (iTerm2)
 
-If the background image is too subtle or too strong:
+If the background watermark is too subtle or too strong:
 
 **Preferences → Profiles → Window → Background Image → Blending slider**
 
-Right = more visible. One-time setting.
-
 ## Terminal support
 
-| Terminal | Background | Badge | Tab color | Timer | ASCII art |
-|----------|-----------|-------|-----------|-------|-----------|
-| **iTerm2** | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **WezTerm** | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **Terminal.app** | — | — | — | ✓ | ✓ |
-| **Alacritty** | — | — | — | ✓ | ✓ |
-| **Kitty** | — | — | — | ✓ | ✓ |
+| Terminal | Background | Badge | Tab color | Title | Timer | Log |
+|----------|-----------|-------|-----------|-------|-------|-----|
+| **iTerm2** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **WezTerm** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Terminal.app** | — | — | — | ✓ | ✓ | ✓ |
+| **Alacritty** | — | — | — | ✓ | ✓ | ✓ |
+| **Kitty** | — | — | — | ✓ | ✓ | ✓ |
 
-Timer and task tracking (`ct`, `ct log`) work everywhere. Visual features (background, badge, tab color) require iTerm2 or WezTerm.
+Core features (timer, task tracking, log, title) work in any terminal. Visual features (background image, badge overlay, tab color) use iTerm2/WezTerm proprietary escape sequences.
 
-## How it's built
+## Architecture
 
-- **~580 lines of zsh** — single file, no dependencies beyond zsh
-- **~560 lines of Python** — icon generator (Pillow), only needed for background images
-- **iTerm2 proprietary escape sequences** for badge, tab color, background image
-- **Standard OSC sequences** for terminal title (universal)
-- **PIL/Pillow** generates semi-transparent PNGs (alpha ~15%) that don't interfere with text
-- **SHA-256 hash** of task name → deterministic color (HSL color space) + shape selection
-- **precmd hook** updates badge on every prompt and ticks the smart timer
+```
+ct.zsh         ~580 lines    Shell integration, timer, badge, CLI
+gen-icons.py   ~560 lines    Icon generation (Pillow), semantic matching
+install.sh      ~80 lines    One-command setup
+```
+
+Design decisions:
+
+- **Single file, zero runtime dependencies** — `ct.zsh` needs only zsh. Python + Pillow are optional (for background images only).
+- **precmd hook** ticks the timer and refreshes the badge on every prompt — no polling, no background process.
+- **SHA-256 hash** of task name → deterministic HSL color + geometric shape. Same input, same output, always.
+- **Three-pass semantic matching** — exact word → substring → joined string → geometric fallback. Covers natural naming patterns ("deploying" matches "deploy", "mydb" matches "db").
+- **Injection-safe** — task names are slugified before hitting the filesystem. Colors are computed via `sys.argv`, not string interpolation.
+- **Graceful degradation** — missing Pillow? Badge + tab color + ASCII art still work. Not iTerm2? Title + timer + log still work.
+- **No subshell overhead in hot paths** — slug computation, state updates, and timer ticks are pure zsh builtins.
 
 ## Uninstall
 

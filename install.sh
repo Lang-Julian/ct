@@ -39,7 +39,7 @@ echo -e "  ${G}✓${R} Installed to ${D}$CT_DIR${R}"
 # ── Generate pre-built icons
 if python3 -c "from PIL import Image" 2>/dev/null; then
     echo -ne "  ${D}Generating icons${R}"
-    for name in box li web infra brane sales content; do
+    for name in deploy api web infra security data docs; do
         python3 "$CT_DIR/gen-icons.py" --task "$name" --out "$CT_DIR/icons/${name}.png" 2>/dev/null
         echo -ne "${G}.${R}"
     done
