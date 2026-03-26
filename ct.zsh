@@ -37,7 +37,7 @@ _CT_TASKS=(
     linkedin  "LinkedIn;0;119;181;li"
     web       "Website;40;180;70;web"
     site      "Website;40;180;70;web"
-    infra     "Infrastruktur;220;170;30;infra"
+    infra     "Infrastructure;220;170;30;infra"
     brane     "Brane AIF;200;40;70;brane"
     sales     "Sales;240;130;20;sales"
     content   "Content;140;60;200;content"
@@ -368,7 +368,7 @@ ct() {
     Threshold: export CT_IDLE=300  (5 min, default: 600)
 
   BADGE (iTerm2 / WezTerm)
-    Updates every prompt:  task · git branch · path · active time
+    Updates every prompt:  task · path · active time
 
   CONFIG
     ~/.ct/config.zsh — add custom tasks with fixed colors:

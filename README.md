@@ -9,7 +9,7 @@ You have 5 terminals open. You switch to one. Which project was this?
 ct deploy
 ```
 
-That's it. A rocket icon appears as a watermark in your terminal background. The tab turns colored. A badge shows your task, git branch, directory, and how long you've been focused. All persistent. All automatic.
+That's it. A rocket icon appears as a watermark in your terminal background. The tab turns colored. A badge shows your task, directory, and how long you've been focused. All persistent. All automatic.
 
 ---
 
@@ -164,14 +164,14 @@ In iTerm2/WezTerm, the badge updates on every prompt:
 
 ```
 ┌─────────────────┐
-│  AI in the Box  │  ← task
-│  main           │  ← git branch
+│  AI IN THE BOX  │  ← task
+│                 │
 │  …/ai-in-the-box│ ← directory
 │  47m            │  ← active focus time
 └─────────────────┘
 ```
 
-Automatically reflects directory changes and branch switches. No manual refresh needed.
+Automatically reflects directory changes. No manual refresh needed.
 
 ## Configuration
 
@@ -212,8 +212,8 @@ Timer and task tracking (`ct`, `ct log`) work everywhere. Visual features (backg
 
 ## How it's built
 
-- **~400 lines of zsh** — single file, no dependencies beyond zsh
-- **~350 lines of Python** — icon generator (Pillow), only needed for background images
+- **~580 lines of zsh** — single file, no dependencies beyond zsh
+- **~560 lines of Python** — icon generator (Pillow), only needed for background images
 - **iTerm2 proprietary escape sequences** for badge, tab color, background image
 - **Standard OSC sequences** for terminal title (universal)
 - **PIL/Pillow** generates semi-transparent PNGs (alpha ~15%) that don't interfere with text
