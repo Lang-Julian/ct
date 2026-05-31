@@ -41,6 +41,8 @@ ct log                 # task history with durations
 ct help                # full reference
 ```
 
+> Prefer a shorter keystroke? **`cw`** is a built-in alias for `ct` — every command and completion works identically (`cw deploy`, `cw log`, …).
+
 ![ct — current task, branch, directory, active focus time](screenshots/status.png)
 
 ## Smart icons

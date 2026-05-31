@@ -13,7 +13,7 @@
 #         ct log        Show task history
 #         ct clear      Reset terminal
 
-CT_VERSION="1.0.0"
+CT_VERSION="1.1.0"
 
 _CT_DIR="${CT_DIR:-$HOME/.ct}"
 _CT_ICON_DIR="${_CT_DIR}/icons"
@@ -155,7 +155,7 @@ _ct_has_iterm_proto() {
 
 _ct_badge() {
     _ct_has_iterm_proto || return
-    printf "\e]1337;SetBadgeFormat=%s\a" "$(echo -n "$1" | base64)"
+    printf "\e]1337;SetBadgeFormat=%s\a" "$(echo -n "$1" | base64 | tr -d '\n')"
 }
 
 _ct_tab_color() {
@@ -173,7 +173,7 @@ _ct_tab_color_reset() {
 _ct_bg_image() {
     _ct_has_iterm_proto || return
     if [[ -n "$1" && -f "$1" ]]; then
-        printf "\e]1337;SetBackgroundImageFile=%s\a" "$(echo -n "$1" | base64)"
+        printf "\e]1337;SetBackgroundImageFile=%s\a" "$(echo -n "$1" | base64 | tr -d '\n')"
     else
         printf "\e]1337;SetBackgroundImageFile=\a"
     fi
@@ -357,7 +357,7 @@ ct() {
         cat <<HELPEOF
 
   ct — context tag (v${CT_VERSION})
-  Tag terminals, not tabs.
+  Tag terminals, not tabs.  (alias: cw)
 
   USAGE
     ct <name>           Tag this terminal (icon auto-generated)
@@ -605,3 +605,8 @@ _ct_complete() {
     _describe 'task' tasks
 }
 compdef _ct_complete ct 2>/dev/null
+
+# ─── 'cw' alias (alternate invocation) ──────────────────────────
+# Short for "context (s)witch"; mirrors `ct` exactly.
+alias cw='ct'
+compdef _ct_complete cw 2>/dev/null
