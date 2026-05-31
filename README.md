@@ -32,8 +32,10 @@ Without Pillow everything still works — just no background images.
 ## Usage
 
 ```bash
-ct deploy              # tag this terminal
+ct deploy              # tag this terminal + remember this directory
 ct                     # show current task + git branch + path + timer
+cw deploy              # jump (cd) into the dir you tagged "deploy", and re-tag
+cw                     # list saved jump locations
 ct clear               # reset everything
 ct list                # show all tasks
 ct delete <name>       # remove a cached icon
@@ -41,7 +43,7 @@ ct log                 # task history with durations
 ct help                # full reference
 ```
 
-> Prefer a shorter keystroke? **`cw`** is a built-in alias for `ct` — every command and completion works identically (`cw deploy`, `cw log`, …).
+> **Jump back to where you were.** `ct <name>` remembers the directory it ran in; `cw <name>` `cd`s into it from anywhere and re-tags the terminal. So run `cd ~/code/brane && ct brane` once, then `cw brane` lands you back in the repo — tagged — from any directory. Bookmarks live in `~/.ct/dirs`.
 
 ![ct — current task, branch, directory, active focus time](screenshots/status.png)
 

@@ -147,6 +147,41 @@ _ct_clear_context() {
     rm -f "${_CT_DIR}/context"
 }
 
+# ─── Directory bookmarks (for `cw <name>` jumping) ──────────────
+# `ct <name>` records slug→dir here; `cw <name>` reads it back.
+# Touched only on explicit tag — never in the precmd hot path.
+
+_CT_DIRS_FILE="${_CT_DIR}/dirs"
+
+_ct_dir_save() {                    # $1=slug  $2=dir
+    [[ -z "$1" || -z "$2" ]] && return
+    mkdir -p "$_CT_DIR"
+    local tmp="${_CT_DIRS_FILE}.$$"
+    [[ -f "$_CT_DIRS_FILE" ]] && grep -v "^$1|" "$_CT_DIRS_FILE" > "$tmp" 2>/dev/null
+    echo "$1|$2" >> "$tmp"
+    mv -f "$tmp" "$_CT_DIRS_FILE" 2>/dev/null
+}
+
+_ct_dir_lookup() {                  # $1=slug -> echoes dir, or returns 1
+    [[ -f "$_CT_DIRS_FILE" ]] || return 1
+    local line
+    line="$(grep "^$1|" "$_CT_DIRS_FILE" 2>/dev/null | tail -1)"
+    [[ -z "$line" ]] && return 1
+    echo "${line#*|}"
+}
+
+_ct_dir_list() {
+    if [[ ! -s "$_CT_DIRS_FILE" ]]; then
+        echo -e "    \033[2m(none yet — tag a dir with 'ct <name>')\033[0m"
+        return
+    fi
+    local slug dir
+    while IFS='|' read -r slug dir; do
+        [[ -z "$slug" ]] && continue
+        printf "    \033[1m%-14s\033[0m \033[2m%s\033[0m\n" "$slug" "${dir/#$HOME/~}"
+    done < "$_CT_DIRS_FILE"
+}
+
 # ─── iTerm2 / WezTerm escape sequences ──────────────────────────
 
 _ct_has_iterm_proto() {
@@ -357,11 +392,13 @@ ct() {
         cat <<HELPEOF
 
   ct — context tag (v${CT_VERSION})
-  Tag terminals, not tabs.  (alias: cw)
+  Tag terminals, not tabs.
 
   USAGE
-    ct <name>           Tag this terminal (icon auto-generated)
+    ct <name>           Tag this terminal + remember this directory
     ct                  Show current task + branch + path + timer
+    cw <name>           Jump (cd) into the dir tagged <name>, then re-tag
+    cw                  List saved jump locations
     ct clear            Reset (remove background, badge, tab color)
     ct list             Show all tasks (pre-built + custom)
     ct delete <name>    Delete a cached custom icon
@@ -376,6 +413,12 @@ ct() {
     Custom tasks get semantic icons (deploy → rocket, debug → bug,
     docker → whale, meeting → headset, etc.) or unique geometric shapes.
     Icons are cached in ~/.ct/icons/ — instant after first use.
+
+  JUMP  (cw)
+    "ct <name>" remembers the directory you ran it in.
+    "cw <name>" cd's back into it from anywhere and re-tags.
+    Example:  cd ~/code/brane && ct brane   →   later:  cw brane
+    Saved locations live in ~/.ct/dirs ("cw" with no args lists them).
 
   SMART TIMER
     Only counts active focus time. Idle gaps are excluded.
@@ -539,6 +582,7 @@ HELPEOF
     }; then
         _CT_ACTIVE=0
         if (( ${+EPOCHSECONDS} )); then _CT_LAST_PROMPT=$EPOCHSECONDS; else _CT_LAST_PROMPT=$(date +%s); fi
+        _ct_dir_save "$slug" "$PWD"
         echo -e "\n  \033[1;37m◈ $_CT_CURRENT\033[0m  (timer reset)\n"
         return 0
     fi
@@ -580,6 +624,7 @@ HELPEOF
     if (( ${+EPOCHSECONDS} )); then _CT_LAST_PROMPT=$EPOCHSECONDS; else _CT_LAST_PROMPT=$(date +%s); fi
     _ct_log_entry "start" "$label" ""
     _ct_export_context "$label" "$task"
+    _ct_dir_save "$slug" "$PWD"
 
     echo ""
     echo -e "  \033[1;37m◈ $label\033[0m"
@@ -606,7 +651,53 @@ _ct_complete() {
 }
 compdef _ct_complete ct 2>/dev/null
 
-# ─── 'cw' alias (alternate invocation) ──────────────────────────
-# Short for "context (s)witch"; mirrors `ct` exactly.
-alias cw='ct'
-compdef _ct_complete cw 2>/dev/null
+# ─── cw — jump to a tagged task's directory ─────────────────────
+# `ct <name>` tags the current dir and remembers it.
+# `cw <name>` cd's into that remembered dir and re-tags it.
+# `cw` with no args lists saved locations; reserved subcommands
+# (help, list, log, clear, …) pass straight through to `ct`.
+
+cw() {
+    # No args — show saved jump locations
+    if [[ -z "$1" ]]; then
+        echo ""
+        echo -e "  \033[1mJump to a tagged dir:\033[0m  cw <name>"
+        echo ""
+        _ct_dir_list
+        echo ""
+        return 0
+    fi
+
+    local first="${1:l}"
+
+    # Reserved subcommand → delegate to ct (cw help, cw clear, cw log, …)
+    if (( ${_CT_RESERVED[(Ie)$first]} )); then
+        ct "$@"
+        return
+    fi
+
+    local slug="$(_ct_slug "$first")"
+    local dir="$(_ct_dir_lookup "$slug")"
+
+    if [[ -n "$dir" ]]; then
+        if [[ -d "$dir" ]]; then
+            cd "$dir" && ct "$1"
+            return
+        fi
+        echo -e "\n  \033[33m'$1' points to a missing directory:\033[0m ${dir/#$HOME/~}\n"
+        return 1
+    fi
+
+    echo -e "\n  \033[2mNo saved location for '$1'. Tag it there first:\033[0m  ct $1\n"
+    echo -e "  \033[1mSaved:\033[0m"
+    _ct_dir_list
+    echo ""
+    return 1
+}
+
+_cw_complete() {
+    local -a names
+    [[ -f "$_CT_DIRS_FILE" ]] && names=("${(@f)$(cut -d'|' -f1 "$_CT_DIRS_FILE" 2>/dev/null)}")
+    _describe 'saved location' names
+}
+compdef _cw_complete cw 2>/dev/null
